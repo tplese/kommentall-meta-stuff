@@ -1,0 +1,1040 @@
+================================================================================
+FE_KOMMENTALL - FLUTTER APPLICATION FLOW (ACTUAL CODE)
+TestAI Project - Frontend Flow Documentation
+Based on Real Implementation in Android Studio
+================================================================================
+
+FLOW A: MAIN PROMPT SUBMISSION (New Conversation or Continuing Thread)
+================================================================================
+
+1. UI Layer - User Input (lib/ui/widgets/prompt_input_field.dart)
+   │
+   └─> PromptInputField (StatefulWidget)
+       └─> PromptInputFieldState
+           ├─> TextField
+           │   ├─> TextEditingController _textController
+           │   ├─> FocusNode _focusNode
+           │   └─> onSubmitted: (_) => _handleSendRequest()
+           │       Returns: void
+           │
+           └─> FloatingActionButton (Send button)
+               └─> onPressed: _handleSendRequest()
+                   │
+                   └─> _handleSendRequest()
+                       ├─> Validates: _textController.text.trim().isEmpty
+                       │   └─> If empty: shows SnackBar, returns
+                       ├─> Calls: widget.onPrompt(text)
+                       │   Returns: void
+                       └─> Error handling: try-catch with SnackBar
+                           Returns: void
+
+2. UI Layer - Main Screen (lib/screens/home_screen.dart)
+   │
+   └─> HomeScreen (StatefulWidget)
+       └─> HomeScreenState
+           │
+           ├─> State Variables:
+           │   ├─> Map<String, Point> threadMap (stores conversation threads)
+           │   ├─> List<Point> treeViewList (for tree view display)
+           │   ├─> PromptArgs promptArgs (tracks current prompt context)
+           │   ├─> Set<String> loadingExchanges (tracks loading state)
+           │   ├─> bool isLoading
+           │   └─> String? errorMessage
+           │
+           ├─> Manager Instances (Initialized in initState):
+           │   ├─> BackendService backendService
+           │   ├─> PointManager pointManager
+           │   ├─> ShardManager shardManager
+           │   ├─> ThreadManager threadManager
+           │   ├─> TreeViewManager treeViewManager
+           │   ├─> ContextManager contextManager
+           │   ├─> HomeScreenManager homeScreenManager
+           │   └─> ApiServicesAbstract currentApiService = OpenAIService()
+           │
+           └─> Future<void> onPrompt(String promptText)
+               ├─> Sets errorMessage = null
+               ├─> Determines if sub-prompt: isSubPrompt = promptArgs.isShardChild
+               ├─> Creates currentPromptArgs:
+               │   └─> If NOT sub-prompt:
+               │       └─> PromptArgs(
+               │           currentPointId: treeViewList.last.id or '',
+               │           parentPointId: treeViewList.last.id or null,
+               │           isShardChild: false
+               │       )
+               │   └─> If IS sub-prompt:
+               │       └─> Uses existing promptArgs
+               │
+               ├─> Calls: homeScreenManager.handlePrompt()
+               │   Parameters:
+               │   - promptText: String
+               │   - promptArgs: PromptArgs
+               │   - updatePromptArgs: (newArgs) => setState callback
+               │   - treeViewList: List<Point>
+               │   - updateTreeViewList: (newList) => setState callback
+               │   - loadingExchanges: Set<String>
+               │   - updateLoadingExchanges: (newSet) => setState callback
+               │   Returns: Future<void>
+               │
+               ├─> On success: setState(() { promptArgs = promptArgs.clear() })
+               ├─> On error: setState(() { errorMessage = 'Failed...' })
+               └─> finally: setState(() { isLoading = false })
+                   Returns: Future<void>
+
+
+
+3. Business Logic Layer (lib/managers/home_screen_manager.dart)
+   │
+   └─> HomeScreenManager
+       └─> Future<void> handlePrompt(...)
+           ├─> Validates: promptText.trim().isEmpty
+           │   └─> If empty: onErrorOccurred('Please enter valid prompt'), returns
+           │
+           ├─> Sets loading: onLoadingStateChanged(true)
+           │
+           ├─> Calls: threadManager.updateThreadMap()
+           │   Parameters:
+           │   - promptText: String
+           │   - promptArgs: PromptArgs
+           │   Returns: Future<Point> (newPoint)
+           │
+           ├─> Creates AiModelProperties:
+           │   └─> AiModelProperties(
+           │       modelProvider: 'openai',
+           │       model: 'gpt-3.5-turbo',
+           │       max_tokens: 30
+           │   )
+           │
+           ├─> Calls: contextManager.createPromptContext()
+           │   Parameters:
+           │   - newPoint: Point
+           │   Returns: List<RequestMessage> (promptContextMessages)
+           │
+           ├─> Tracks loading for exchange:
+           │   └─> exchangeId = newPoint.exchangesList.last.exchangeId
+           │   └─> updateLoadingExchanges(loadingExchanges + exchangeId)
+           │
+           ├─> Calls: apiService.sendPromptToAi()
+           │   Parameters:
+           │   - pointId: String
+           │   - promptContextMessages: List<RequestMessage>
+           │   - aiModelProperties: AiModelProperties
+           │   Returns: Future<Point> (updatedNewPoint)
+           │
+           ├─> Removes from loading:
+           │   └─> updateLoadingExchanges(loadingExchanges - exchangeId)
+           │
+           ├─> Updates threadMap:
+           │   └─> threadMap[updatedNewPoint.id] = updatedNewPoint
+           │   └─> onMapUpdated.call()
+           │
+           ├─> Calls: populateTreeViewList()
+           │   └─> Calls: treeViewManager.updateTreeViewList()
+           │       Parameters:
+           │       - threadMap: Map<String, Point>
+           │       - treeViewList: List<Point>
+           │       Returns: List<Point> (newTreeViewList)
+           │   └─> updateTreeViewList(newTreeViewList)
+           │
+           ├─> Calls: onClearPromptInput()
+           ├─> Sets loading: onLoadingStateChanged(false)
+           │
+           └─> Error handling: catch block calls onErrorOccurred()
+               Returns: Future<void>
+
+
+
+4. Thread Management Layer (lib/managers/thread_manager.dart)
+   │
+   └─> ThreadManager
+       └─> Future<Point> updateThreadMap(...)
+           ├─> Calls: pointManager.createNewPoint()
+           │   Parameters:
+           │   - promptArgs: PromptArgs
+           │   - promptText: String
+           │   Returns: Future<Point> (newPoint)
+           │
+           ├─> Decision: Is Root Point?
+           │   └─> if (newPoint.id == newPoint.parentPointId):
+           │       ├─> threadMap[newPoint.id] = newPoint
+           │       └─> return newPoint
+           │
+           ├─> Get Parent Point:
+           │   └─> parentPointId = newPoint.parentPointId
+           │   └─> if NOT in threadMap:
+           │       ├─> Creates fetchArgs with parentPointId
+           │       ├─> Calls: pointManager.getParentPoint()
+           │       │   Returns: Future<Point> (parentPoint)
+           │       ├─> Caches: threadMap[parentPoint.id] = parentPoint
+           │       └─> Throws if empty: 'Parent point not found'
+           │   └─> else: parentPoint = threadMap[parentPointId]
+           │
+           ├─> DECISION POINT: Sub-prompt (Sharding) vs Regular Prompt?
+           │   │
+           │   ├─> BRANCH A: Sub-prompt (Sharding Flow)
+           │   │   └─> if (promptArgs.isShardChild && promptArgs.selectedText != null):
+           │   │       ├─> Calls: shardManager.addShardToParentPoint()
+           │   │       │   Parameters:
+           │   │       │   - newPointId: String
+           │   │       │   - parentPoint: Point
+           │   │       │   - promptArgs: PromptArgs
+           │   │       │   Returns: Future<Point> (updatedParentPoint)
+           │   │       │
+           │   │       ├─> Calls: getParentShardId()
+           │   │       │   Parameters:
+           │   │       │   - updatedParentPoint: Point
+           │   │       │   - newPointId: String
+           │   │       │   Returns: String (parentShardId)
+           │   │       │
+           │   │       ├─> Creates updatedNewPoint with parentShardId
+           │   │       │
+           │   │       ├─> Updates threadMap:
+           │   │       │   └─> threadMap[updatedNewPoint.id] = updatedNewPoint
+           │   │       │   └─> threadMap[updatedParentPoint.id] = updatedParentPoint
+           │   │       │
+           │   │       ├─> Calls: onMapUpdated()
+           │   │       └─> return updatedNewPoint
+           │   │
+           │   └─> BRANCH B: Regular Prompt (No Sharding)
+           │       └─> else:
+           │           ├─> Calls: pointManager.updateParentPoint()
+           │           │   Parameters:
+           │           │   - newPointId: String
+           │           │   - parentPoint: Point
+           │           │   Returns: Future<Point> (updatedParentPoint)
+           │           │
+           │           ├─> Updates threadMap:
+           │           │   └─> threadMap[newPoint.id] = newPoint
+           │           │   └─> threadMap[updatedParentPoint.id] = updatedParentPoint
+           │           │
+           │           ├─> Calls: onMapUpdated()
+           │           └─> return newPoint
+           │
+           └─> Error handling: debugPrintStack + rethrow
+               Returns: Future<Point>
+
+
+
+5. Point Management Layer (lib/managers/point_manager.dart)
+   │
+   ├─> PointManager
+   │   │
+   │   ├─> Future<Point> createNewPoint(...)
+   │   │   ├─> Creates PromptMessage:
+   │   │   │   └─> PromptMessage(role: "user", content: promptText)
+   │   │   │
+   │   │   ├─> Creates Prompt:
+   │   │   │   └─> Prompt(
+   │   │   │       model: prompt_constants.aiModel,
+   │   │   │       promptMessage: promptMessageDTO,
+   │   │   │       maxTokens: prompt_constants.maxTokens
+   │   │   │   )
+   │   │   │
+   │   │   ├─> Creates Exchange:
+   │   │   │   └─> Exchange(
+   │   │   │       exchangeId: ObjectId().toString(),
+   │   │   │       prompt: promptDTO,
+   │   │   │       response: null
+   │   │   │   )
+   │   │   │
+   │   │   ├─> Generates IDs:
+   │   │   │   ├─> newPointId = ObjectId().toString()
+   │   │   │   └─> Determines parentPointId:
+   │   │   │       ├─> If currentPointId not empty: use it
+   │   │   │       ├─> Else if parentPointId provided: use it
+   │   │   │       └─> Else (root): parentPointId = newPointId
+   │   │   │
+   │   │   ├─> Creates Metadata:
+   │   │   │   └─> Metadata(openState: true, created: DateTime.now())
+   │   │   │
+   │   │   ├─> Creates Point:
+   │   │   │   └─> Point(
+   │   │   │       id: newPointId,
+   │   │   │       parentPointId: parentPointId,
+   │   │   │       parentShardId: promptArgs.parentShardId,
+   │   │   │       exchangesList: [exchangeDTO],
+   │   │   │       metadata: metadata
+   │   │   │   )
+   │   │   │
+   │   │   ├─> Calls: backendService.savePointInDb(newPoint)
+   │   │   │   Returns: Future<Point>
+   │   │   │
+   │   │   └─> return newPoint
+   │   │       Returns: Future<Point>
+   │   │
+   │   ├─> Future<Point> getParentPoint(...)
+   │   │   ├─> Validates: promptArgs.parentPointId != null
+   │   │   ├─> Calls: backendService.getPointById(parentPointId)
+   │   │   │   Returns: Future<Point?> (parentPoint or null)
+   │   │   ├─> Returns Point.empty() if null
+   │   │   └─> Error handling: debugPrintStack + rethrow
+   │   │       Returns: Future<Point>
+   │   │
+   │   └─> Future<Point> updateParentPoint(...)
+   │       ├─> Creates updatedParentPoint:
+   │       │   └─> parentPoint.copyWith(
+   │       │       pointChildren: [...parentPoint.pointChildren, newPointId]
+   │       │   )
+   │       ├─> Calls: backendService.savePointInDb(updatedParentPoint)
+   │       │   Returns: Future<Point>
+   │       └─> return updatedParentPoint
+   │           Returns: Future<Point>
+   │
+   └─> ShardManager (lib/managers/shard_manager.dart)
+       │
+       └─> Future<Point> addShardToParentPoint(...)
+           ├─> Calls: createShard()
+           │   Parameters:
+           │   - newPointId: String
+           │   - parentPoint: Point
+           │   - promptArgs: PromptArgs
+           │   │
+           │   └─> createShard() implementation:
+           │       ├─> Gets exchange by exchangeId from promptArgs
+           │       ├─> Extracts choices list from response
+           │       ├─> Gets choiceIndex (default: last choice)
+           │       ├─> Calculates positions:
+           │       │   └─> startPosition = promptArgs.startPosition ?? endOfResponse
+           │       │   └─> endPosition = promptArgs.endPosition ?? endOfResponse
+           │       ├─> Creates Anchor:
+           │       │   └─> Anchor(
+           │       │       startPosition: startPosition,
+           │       │       endPosition: endPosition,
+           │       │       selectedText: promptArgs.selectedText
+           │       │   )
+           │       └─> Creates Shard:
+           │           └─> Shard(
+           │               shardId: ObjectId().toString(),
+           │               shardChildren: [newPointId],
+           │               anchor: anchor
+           │           )
+           │       Returns: Shard
+           │
+           ├─> Calls: updateShardsList()
+           │   Parameters:
+           │   - parentPoint.shardsList: List<Shard>
+           │   - newShard: Shard
+           │   - promptArgs.parentShardId: String?
+           │   │
+           │   └─> updateShardsList() implementation:
+           │       ├─> Calls: findInsertionIndex()
+           │       │   ├─> Iterates through shardsList
+           │       │   ├─> Compares startPositions
+           │       │   ├─> Returns index where newShard should be inserted
+           │       │   └─> Maintains sorted order by startPosition
+           │       │   Returns: int (insertionIndex)
+           │       ├─> Creates updatedShardsList = List.from(shardsList)
+           │       ├─> Inserts: updatedShardsList.insert(insertionIndex, newShard)
+           │       └─> return updatedShardsList
+           │       Returns: List<Shard>
+           │
+           ├─> Creates updatedParentPoint:
+           │   └─> Point(
+           │       id: parentPoint.id,
+           │       parentPointId: parentPoint.parentPointId,
+           │       pointChildren: parentPoint.pointChildren,
+           │       parentShardId: parentPoint.parentShardId,
+           │       shardsList: updatedShardsList,
+           │       exchangesList: parentPoint.exchangesList,
+           │       metadata: parentPoint.metadata
+           │   )
+           │
+           ├─> Calls: backendService.savePointInDb(updatedParentPoint)
+           │   Returns: Future<Point>
+           │
+           └─> return updatedParentPoint
+               Returns: Future<Point>
+
+
+
+6. Context Management Layer (lib/managers/context_manager.dart)
+   │
+   └─> ContextManager
+       └─> List<RequestMessage> createPromptContext(...)
+           ├─> Creates system message:
+           │   └─> RequestMessage(
+           │       pointId: '',
+           │       exchangeId: '',
+           │       role: "system",
+           │       content: "Answer with max 3 words."
+           │   )
+           │
+           ├─> Calls: createContextMessagesList()
+           │   Parameters:
+           │   - newPoint: Point
+           │   │
+           │   └─> createContextMessagesList() implementation:
+           │       ├─> INITIAL SETUP:
+           │       │   ├─> currentPointId = newPoint.id
+           │       │   ├─> parentPointId = newPoint.parentPointId
+           │       │   ├─> isRootAddedToMessages = false
+           │       │   └─> contextMessagesReversed = []
+           │       │
+           │       ├─> Adds initial message:
+           │       │   └─> Calls: createRequestMessage()
+           │       │       └─> RequestMessage from newPoint.exchangesList.last
+           │       │
+           │       ├─> Checks if root:
+           │       │   └─> if (currentPointId == parentPointId):
+           │       │       └─> isRootAddedToMessages = true
+           │       │   └─> else: currentPointId = parentPointId
+           │       │
+           │       ├─> TRAVERSE THE TREE (while !isRootAddedToMessages):
+           │       │   ├─> Gets: currentPoint = threadManager.getPointFromThread()
+           │       │   │
+           │       │   ├─> DECISION: Is childPoint in ShardChildren?
+           │       │   │   │
+           │       │   │   ├─> If childPoint.parentShardId exists:
+           │       │   │   │   ├─> Finds currentShard in currentPoint.shardsList
+           │       │   │   │   ├─> Calls: addChildrenToTheList(shardChildren)
+           │       │   │   │   │   └─> Iterates from childIndex-1 to end
+           │       │   │   │   │   └─> Gets each child Point from threadManager
+           │       │   │   │   │   └─> Creates RequestMessage for each
+           │       │   │   │   │   Returns: List<RequestMessage>
+           │       │   │   │   ├─> Adds shardChildrenMessages to contextMessagesReversed
+           │       │   │   │   └─> Adds currentShard message with anchor.endPosition
+           │       │   │   │
+           │       │   │   └─> Else if currentPoint.pointChildren not empty:
+           │       │   │       ├─> Calls: addChildrenToTheList(pointChildren)
+           │       │   │       └─> Adds pointChildrenMessages to contextMessagesReversed
+           │       │   │
+           │       │   ├─> DETERMINE NEXT PARENT:
+           │       │   │   └─> if (currentPoint.id == currentPoint.parentPointId):
+           │       │   │       ├─> isRootAddedToMessages = true
+           │       │   │       └─> Adds currentPoint message to contextMessagesReversed
+           │       │   │   └─> else:
+           │       │   │       ├─> childPoint = currentPoint
+           │       │   │       └─> currentPointId = currentPoint.parentPointId
+           │       │   │
+           │       │   └─> Loop continues...
+           │       │
+           │       └─> Reverses list: contextMessages = contextMessagesReversed.reversed.toList()
+           │       Returns: List<RequestMessage>
+           │
+           ├─> Combines messages:
+           │   └─> promptContextMessages = [systemMessage, ...contextMessagesList]
+           │
+           └─> return promptContextMessages
+               Returns: List<RequestMessage>
+
+7. API Service Layer (lib/api_services/openai_service.dart)
+   │
+   └─> OpenAIService implements ApiServicesAbstract
+       └─> Future<Point> sendPromptToAi(...)
+           ├─> Builds request:
+           │   ├─> url = Uri.parse('$openAiApiEndpoint/prompt')
+           │   ├─> headers = {'Content-Type': 'application/json'}
+           │   └─> body = jsonEncode({
+           │       "pointId": pointId,
+           │       "promptContextMessages": promptContextMessages,
+           │       "AiModelProperties": aiModelProperties
+           │   })
+           │
+           ├─> Calls: http.post(url, headers, body)
+           │   └─> await response
+           │   Returns: Future<http.Response>
+           │
+           ├─> Handles response:
+           │   └─> if (statusCode == 200):
+           │       ├─> jsonData = jsonDecode(response.body)
+           │       └─> return Point.fromJson(jsonData)
+           │   └─> else:
+           │       └─> throw NetworkException('Failed with status...')
+           │
+           └─> Error handling:
+               └─> catch: throw ApiRequestException('Request failed...')
+               Returns: Future<Point>
+
+8. Backend Service Layer (lib/api_services/backend_service.dart)
+   │
+   └─> BackendService
+       │
+       ├─> Future<Point?> getPointById(String pointId)
+       │   ├─> url = Uri.parse('$backendApiEndpoint/points/$pointId')
+       │   ├─> Calls: http.get(url, headers)
+       │   ├─> if (statusCode == 200):
+       │   │   └─> return Point.fromJson(jsonDecode(response.body))
+       │   ├─> if (statusCode == 404):
+       │   │   └─> return null
+       │   └─> Error: throw NetworkException / ApiRequestException
+       │       Returns: Future<Point?>
+       │
+       └─> Future<Point> savePointInDb(Point point)
+           ├─> url = Uri.parse('$backendApiEndpoint/points')
+           ├─> body = jsonEncode(point.toJson())
+           ├─> Calls: http.post(url, headers, body)
+           ├─> if (statusCode == 201):
+           │   └─> return Point.fromJson(jsonDecode(response.body))
+           └─> Error: throw NetworkException / ApiRequestException
+               Returns: Future<Point>
+
+
+
+9. UI Update & State Refresh (lib/screens/home_screen.dart)
+   │
+   ├─> HomeScreenState receives callbacks from HomeScreenManager:
+   │   │
+   │   ├─> updateTreeViewList(newTreeViewList) callback:
+   │   │   └─> setState(() { treeViewList = newTreeViewList })
+   │   │
+   │   ├─> updateLoadingExchanges(newLoadingExchanges) callback:
+   │   │   └─> setState(() { 
+   │   │       loadingExchanges.clear()
+   │   │       loadingExchanges.addAll(newLoadingExchanges)
+   │   │   })
+   │   │
+   │   └─> onClearPromptInput callback:
+   │       └─> promptInputFieldKey.currentState?.clearText()
+   │
+   └─> Widget build(BuildContext context)
+       └─> Column with:
+           ├─> CircularProgressIndicator (if isLoading)
+           ├─> Error Container (if errorMessage != null)
+           ├─> TreeSliverThread (if threadMap.isNotEmpty)
+           │   Parameters:
+           │   - treeViewList: List<Point>
+           │   - threadMap: Map<String, Point>
+           │   - loadingExchanges: Set<String>
+           │   - prepareSubPromptInput: callback
+           │   - onNodeSelected: callback
+           │   Returns: Widget (CustomScrollView with tree)
+           └─> PromptInputField
+               Returns: Widget
+
+
+================================================================================
+FLOW B: SUB-PROMPT SUBMISSION (Follow-up on selected text - Sharding)
+================================================================================
+
+1. UI Layer - Tree View Interaction (lib/ui/widgets/tree_sliver_thread.dart)
+   │
+   └─> TreeSliverThread
+       └─> User selects text from response message
+           └─> onTextSelected callback triggered
+               ├─> Extracts selection info:
+               │   ├─> selectedText: String
+               │   ├─> startPosition: int
+               │   ├─> endPosition: int
+               │   ├─> exchangeId: String
+               │   └─> choiceIndex: int
+               │
+               └─> Calls: prepareSubPromptInput(promptArgs)
+                   Parameters:
+                   - PromptArgs(
+                       currentPointId: currentPoint.id,
+                       parentPointId: currentPoint.id,
+                       parentShardId: existingShardId or null,
+                       isShardChild: true,
+                       exchangeId: exchangeId,
+                       choiceIndex: choiceIndex,
+                       selectedText: selectedText,
+                       startPosition: startPosition,
+                       endPosition: endPosition
+                   )
+                   Returns: void
+
+2. UI Layer - Prepare Sub-Prompt Input (lib/screens/home_screen.dart)
+   │
+   └─> HomeScreenState
+       └─> void prepareSubPromptInput(PromptArgs promptArgs)
+           ├─> Validates: promptArgs.selectedText not empty
+           │   └─> If empty: showErrorSnackBar('No text selected'), returns
+           │
+           ├─> Updates state:
+           │   └─> setState(() {
+           │       errorMessage = null
+           │       this.promptArgs = promptArgs.copyWith(
+           │           currentPointId: promptArgs.currentPointId,
+           │           isShardChild: true
+           │       )
+           │   })
+           │
+           ├─> Shows SnackBar:
+           │   └─> 'Text copied to input. Modify if needed and send.'
+           │
+           └─> WidgetsBinding.instance.addPostFrameCallback():
+               └─> Sets text in input field:
+                   ├─> promptInputFieldKey.currentState?.setText(selectedText)
+                   └─> promptInputFieldKey.currentState?.focusInput()
+               Returns: void
+
+3. User Modifies/Confirms Sub-Prompt
+   │
+   └─> PromptInputField (same as Flow A)
+       └─> User edits text or presses Send
+           └─> Calls: widget.onPrompt(text)
+               └─> Triggers: HomeScreenState.onPrompt(promptText)
+
+4. HomeScreenState.onPrompt() - SUB-PROMPT BRANCH
+   │
+   └─> Future<void> onPrompt(String promptText)
+       ├─> Checks: isSubPrompt = promptArgs.isShardChild
+       │   └─> TRUE (sub-prompt flow)
+       │
+       ├─> Uses existing promptArgs (contains sharding info):
+       │   └─> currentPromptArgs = promptArgs
+       │       Contains:
+       │       - currentPointId: parent point ID
+       │       - isShardChild: true
+       │       - selectedText: original selected text
+       │       - startPosition, endPosition: selection positions
+       │       - exchangeId, choiceIndex: reference to response
+       │
+       └─> Calls: homeScreenManager.handlePrompt()
+           (Same parameters as Flow A, but promptArgs indicates sharding)
+           Returns: Future<void>
+
+5. HomeScreenManager.handlePrompt() - PROCESSES SUB-PROMPT
+   │
+   └─> (Same flow as Flow A, but with isShardChild = true)
+       └─> Calls: threadManager.updateThreadMap()
+           Parameters include: promptArgs with isShardChild = true
+
+6. ThreadManager.updateThreadMap() - SUB-PROMPT BRANCH
+   │
+   └─> DECISION POINT: promptArgs.isShardChild = TRUE
+       │
+       └─> BRANCH A: Sub-prompt (Sharding Flow) ✓ SELECTED
+           ├─> Calls: pointManager.createNewPoint()
+           │   └─> Creates new Point with:
+           │       - id: new ObjectId
+           │       - parentPointId: from promptArgs.currentPointId
+           │       - parentShardId: null initially
+           │       - exchangesList: [new Exchange with user prompt]
+           │   Returns: Future<Point> (newPoint)
+           │
+           ├─> Gets parentPoint from threadMap or backend
+           │
+           ├─> Calls: shardManager.addShardToParentPoint()
+           │   Parameters:
+           │   - newPointId: newPoint.id
+           │   - parentPoint: Point
+           │   - promptArgs: PromptArgs (with selectedText, positions, etc.)
+           │   │
+           │   └─> Creates new Shard:
+           │       ├─> Anchor with startPosition, endPosition, selectedText
+           │       ├─> shardChildren: [newPointId]
+           │       ├─> Inserts into parentPoint.shardsList (sorted by position)
+           │       └─> Saves updatedParentPoint to backend
+           │   Returns: Future<Point> (updatedParentPoint)
+           │
+           ├─> Calls: getParentShardId()
+           │   └─> Finds shardId where newPointId is in shardChildren
+           │   Returns: String (parentShardId)
+           │
+           ├─> Creates updatedNewPoint:
+           │   └─> newPoint.copyWith(parentShardId: parentShardId)
+           │
+           ├─> Updates threadMap:
+           │   └─> threadMap[updatedNewPoint.id] = updatedNewPoint
+           │   └─> threadMap[updatedParentPoint.id] = updatedParentPoint
+           │
+           ├─> Calls: onMapUpdated()
+           │
+           └─> return updatedNewPoint
+               Returns: Future<Point>
+
+7. Rest of Flow (Same as Flow A)
+   │
+   ├─> ContextManager.createPromptContext()
+   │   └─> Traverses tree, includes shard relationships in context
+   │
+   ├─> OpenAIService.sendPromptToAi()
+   │   └─> Sends request to AI API
+   │
+   ├─> Updates threadMap with response
+   │
+   ├─> TreeViewManager.updateTreeViewList()
+   │   └─> Rebuilds tree structure with new shard branch
+   │
+   └─> UI updates with new exchange under sharded parent
+       Returns: Widget (Tree with sub-prompt branch)
+
+
+
+
+
+================================================================================
+DATA MODELS (lib/models/)
+================================================================================
+
+1. Point (point.dart) - Main conversation unit
+   ├─> String id
+   ├─> String parentPointId
+   ├─> List<String> pointChildren
+   ├─> String? parentShardId
+   ├─> List<Shard> shardsList
+   ├─> List<Exchange> exchangesList
+   ├─> Metadata? metadata
+   ├─> factory Point.fromJson(Map<String, dynamic> json)
+   ├─> Map<String, dynamic> toJson()
+   ├─> Point.empty() constructor
+   └─> Point copyWith(...) method
+
+2. Shard (point.dart) - Sub-prompt branching
+   ├─> String shardId
+   ├─> List<String> shardChildren
+   ├─> Anchor anchor
+   ├─> factory Shard.fromJson(...)
+   ├─> Map<String, dynamic> toJson()
+   └─> static Shard empty()
+
+3. Anchor (point.dart) - Text selection reference
+   ├─> int startPosition
+   ├─> int endPosition
+   ├─> String selectedText
+   ├─> factory Anchor.fromJson(...)
+   └─> Map<String, dynamic> toJson()
+
+4. Exchange (point.dart) - Q&A pair
+   ├─> String exchangeId
+   ├─> String? exchangeTitle
+   ├─> Prompt prompt
+   ├─> Response? response
+   ├─> factory Exchange.fromJson(...)
+   └─> Map<String, dynamic> toJson()
+
+5. Prompt (point.dart) - User question
+   ├─> String model
+   ├─> PromptMessage promptMessage
+   ├─> int maxTokens
+   ├─> factory Prompt.fromJson(...)
+   └─> Map<String, dynamic> toJson()
+
+6. PromptMessage (point.dart)
+   ├─> String role ("user")
+   ├─> String content
+   ├─> factory PromptMessage.fromJson(...)
+   └─> Map<String, dynamic> toJson()
+
+7. Response (point.dart) - AI response
+   ├─> String id
+   ├─> String object
+   ├─> int created
+   ├─> String model
+   ├─> List<Choice> choices
+   ├─> Usage usage
+   ├─> String serviceTier
+   ├─> String? systemFingerprint
+   ├─> factory Response.fromJson(...)
+   └─> Map<String, dynamic> toJson()
+
+8. Choice (point.dart) - Response option
+   ├─> int index
+   ├─> Message message
+   ├─> dynamic logprobs
+   ├─> String finishReason
+   ├─> factory Choice.fromJson(...)
+   └─> Map<String, dynamic> toJson()
+
+9. Message (point.dart) - AI message
+   ├─> String role ("assistant")
+   ├─> String content
+   ├─> String? refusal
+   ├─> factory Message.fromJson(...)
+   └─> Map<String, dynamic> toJson()
+
+10. PromptArgs (prompt_args.dart) - Flow control
+    ├─> String currentPointId
+    ├─> String? parentPointId
+    ├─> String? parentShardId
+    ├─> bool isShardChild
+    ├─> String? exchangeId
+    ├─> int? choiceIndex
+    ├─> String? selectedText
+    ├─> int? startPosition
+    ├─> int? endPosition
+    ├─> String? error
+    ├─> PromptArgs copyWith(...)
+    ├─> PromptArgs clear()
+    └─> String toString()
+
+11. RequestMessage (request_message.dart) - API request format
+    ├─> String pointId
+    ├─> String exchangeId
+    ├─> String role
+    ├─> String content
+    ├─> factory RequestMessage.fromJson(...)
+    └─> Map<String, dynamic> toJson()
+
+12. AiModelProperties (ai_model_properties.dart)
+    ├─> String modelProvider
+    ├─> String model
+    ├─> int max_tokens
+    ├─> factory AiModelProperties.fromJson(...)
+    └─> Map<String, dynamic> toJson()
+
+
+================================================================================
+ERROR HANDLING (Applies to both Flow A and B)
+================================================================================
+
+1. Exception Classes (lib/exceptions/)
+   │
+   ├─> ApiRequestException (api_request_exception.dart)
+   │   └─> Thrown when HTTP request fails
+   │
+   ├─> ApiResponseException (api_response_exception.dart)
+   │   └─> Thrown when response parsing fails
+   │
+   └─> NetworkException (network_exception.dart)
+       └─> Thrown when network/HTTP errors occur
+
+2. BackendService Error Handling
+   │
+   └─> try-catch in all methods:
+       ├─> catch (e): throw ApiRequestException('Request failed: $e')
+       ├─> if (statusCode != 200/201): throw NetworkException('Failed with status...')
+       └─> Returns null for 404 in getPointById
+
+3. OpenAIService Error Handling
+   │
+   └─> try-catch in sendPromptToAi:
+       ├─> catch (e): throw ApiRequestException('Request failed: $e')
+       └─> if (statusCode != 200): throw NetworkException('Failed with status...')
+
+4. Manager Error Handling
+   │
+   ├─> PointManager.getParentPoint():
+   │   └─> catch (e): debugPrintStack + rethrow
+   │
+   ├─> ThreadManager.updateThreadMap():
+   │   └─> catch (e): debugPrintStack + rethrow
+   │
+   ├─> ShardManager.addShardToParentPoint():
+   │   └─> catch (e): debugPrintStack + return Point.empty()
+   │
+   └─> HomeScreenManager.handlePrompt():
+       └─> catch (e): onErrorOccurred('Failed to process prompt: ${e.toString()}')
+
+5. UI Layer Error Display
+   │
+   └─> HomeScreenState
+       ├─> onPrompt() catch block:
+       │   └─> setState(() { errorMessage = 'Failed to send request: ${e.toString()}' })
+       │
+       ├─> showErrorSnackBar(String message):
+       │   └─> ScaffoldMessenger.showSnackBar(
+       │       SnackBar(
+       │         content: Text(message),
+       │         backgroundColor: Colors.red,
+       │         action: SnackBarAction(label: 'Dismiss', ...)
+       │       )
+       │   )
+       │
+       └─> Widget build():
+           └─> if (errorMessage != null):
+               └─> Container with red error message display
+
+6. PromptInputField Error Handling
+   │
+   └─> _handleSendRequest():
+       └─> try-catch:
+           └─> catch (e): ScaffoldMessenger.showSnackBar(
+               SnackBar(
+                 content: Text('Failed to send message: ${e.toString()}'),
+                 backgroundColor: Colors.red
+               )
+           )
+
+7. Safe State Updates
+   │
+   └─> All setState() calls check: if (mounted)
+       └─> Prevents errors when widget is disposed
+
+8. Graceful Degradation
+   │
+   ├─> Empty checks: Point.empty(), Shard.empty()
+   ├─> Null safety: List<Shard>? shardsList ?? []
+   ├─> Default values in constructors
+   └─> Continue execution on non-critical errors (e.g., TreeView population)
+
+
+================================================================================
+CONFIGURATION & DEPENDENCIES
+================================================================================
+
+1. URL Configuration (lib/config/url_constants.dart)
+   ├─> backendApiEndpoint: String
+   └─> openAiApiEndpoint: String
+
+2. Prompt Configuration (lib/config/prompt_constants.dart)
+   ├─> aiModel: String
+   └─> maxTokens: int
+
+3. Dependencies (pubspec.yaml)
+   ├─> http: ^1.x.x (HTTP requests)
+   ├─> json_annotation: ^4.x.x (JSON serialization)
+   ├─> objectid: ^3.x.x (MongoDB-style IDs)
+   └─> Flutter SDK widgets
+
+4. Managers Architecture
+   ├─> HomeScreenManager: Orchestrates all operations
+   ├─> ThreadManager: Manages conversation threads & branching
+   ├─> PointManager: CRUD operations for Points
+   ├─> ShardManager: Handles sub-prompt sharding logic
+   ├─> ContextManager: Builds conversation context for AI
+   └─> TreeViewManager: Manages tree view display logic
+
+
+================================================================================
+KEY ARCHITECTURAL PATTERNS
+================================================================================
+
+1. Separation of Concerns
+   ├─> UI Layer: Widgets (HomeScreen, PromptInputField, TreeSliverThread)
+   ├─> Business Logic: Managers (HomeScreenManager, ThreadManager, etc.)
+   ├─> Data Access: Services (BackendService, OpenAIService)
+   └─> Models: DTOs (Point, Exchange, PromptArgs, etc.)
+
+2. State Management
+   ├─> StatefulWidget with setState()
+   ├─> Callback pattern for state updates
+   ├─> Centralized state in HomeScreenState:
+   │   ├─> threadMap: Map<String, Point>
+   │   ├─> treeViewList: List<Point>
+   │   ├─> promptArgs: PromptArgs
+   │   └─> loadingExchanges: Set<String>
+
+3. Error Handling Strategy
+   ├─> Non-crashing: All errors caught and handled gracefully
+   ├─> User feedback: SnackBars for all error states
+   ├─> Logging: debugPrintStack() for debugging
+   └─> Fallbacks: Empty objects (Point.empty(), Shard.empty())
+
+4. Async Operations
+   ├─> All API calls use Future<T>
+   ├─> await/async pattern throughout
+   ├─> Loading states tracked (isLoading, loadingExchanges)
+   └─> Proper error propagation with try-catch
+
+5. Data Flow Pattern
+   ├─> Unidirectional: UI → Manager → Service → API
+   ├─> Callbacks for updates: Manager → HomeScreen → setState
+   └─> Reactive: State changes trigger UI rebuilds
+
+
+================================================================================
+CRITICAL DECISION POINTS IN FLOW
+================================================================================
+
+1. Root vs Child Point (ThreadManager)
+   Decision: newPoint.id == newPoint.parentPointId
+   - True: Root point (parent is itself)
+   - False: Child point (needs parent lookup)
+
+2. Sharding vs Regular Prompt (ThreadManager)
+   Decision: promptArgs.isShardChild && promptArgs.selectedText != null
+   - True: Creates Shard in parent, adds to shardsList
+   - False: Adds to parent's pointChildren list
+
+3. Parent Point Location (ThreadManager)
+   Decision: threadMap.containsKey(parentPointId)
+   - True: Get from threadMap (fast)
+   - False: Fetch from backend via API (slow)
+
+4. Context Building (ContextManager)
+   Decision: childPoint.parentShardId exists
+   - True: Traverse via shardsList and shardChildren
+   - False: Traverse via pointChildren
+
+5. Tree Traversal Direction (ContextManager)
+   Flow: Leaf → Root (reversed at end)
+   - Builds context from newest to oldest
+   - Reverses to chronological order before sending to AI
+
+
+================================================================================
+API ENDPOINTS
+================================================================================
+
+Backend API (Spring Boot):
+├─> POST /points
+│   └─> Creates or updates a Point
+│   └─> Returns: Point (201 Created)
+│
+└─> GET /points/{pointId}
+    └─> Retrieves a Point by ID
+    └─> Returns: Point (200 OK) or null (404 Not Found)
+
+OpenAI Proxy API:
+└─> POST /prompt
+    └─> Sends prompt with context to AI
+    └─> Body: {
+        pointId: String,
+        promptContextMessages: List<RequestMessage>,
+        AiModelProperties: AiModelProperties
+    }
+    └─> Returns: Point (200 OK) with Response populated
+
+
+================================================================================
+FLOW SUMMARY
+================================================================================
+
+MAIN PROMPT (Flow A):
+User Input → HomeScreen.onPrompt() → HomeScreenManager.handlePrompt()
+→ ThreadManager.updateThreadMap() → PointManager.createNewPoint()
+→ [Regular Flow: PointManager.updateParentPoint()]
+→ ContextManager.createPromptContext() → OpenAIService.sendPromptToAi()
+→ Update threadMap → TreeViewManager.updateTreeViewList()
+→ UI setState() → Tree View Display
+
+SUB-PROMPT (Flow B):
+Text Selection → prepareSubPromptInput() → User Edits → HomeScreen.onPrompt()
+→ HomeScreenManager.handlePrompt() → ThreadManager.updateThreadMap()
+→ PointManager.createNewPoint()
+→ [Sharding Flow: ShardManager.addShardToParentPoint()]
+→ ContextManager.createPromptContext() (includes shard context)
+→ OpenAIService.sendPromptToAi() → Update threadMap
+→ TreeViewManager.updateTreeViewList() → UI setState()
+→ Tree View Display with Shard Branch
+
+
+================================================================================
+NOTES
+================================================================================
+
+1. **Thread vs Point**: 
+   - Thread = Root Point + all descendants (conversation tree)
+   - Point = Single node in conversation tree
+   - threadMap stores multiple threads/points for quick access
+
+2. **Shard vs PointChild**:
+   - Shard = Sub-prompt branching from selected text in response
+   - PointChild = Regular continuation of conversation thread
+   - Both stored in same Point, different lists
+
+3. **Context Building**:
+   - Traverses from current point up to root
+   - Includes sibling points from shards/children
+   - Maintains conversation coherence for AI
+
+4. **ID Generation**:
+   - Uses ObjectId() for MongoDB-compatible IDs
+   - Generated client-side before API call
+   - Ensures unique IDs across distributed system
+
+5. **State Synchronization**:
+   - threadMap is source of truth for current session
+   - Backend is persistent storage
+   - UI reflects threadMap state via callbacks
+
+6. **Loading States**:
+   - Global: isLoading (entire screen)
+   - Granular: loadingExchanges (per-exchange indicators)
+   - Tracked throughout async operations
+
+7. **Error Recovery**:
+   - Non-blocking errors (TreeView population)
+   - Blocking errors (API failures) → user notification
+   - All operations have fallbacks
+
+8. **Production Ready**:
+   - All async operations properly awaited
+   - Proper error boundaries
+   - Safe state updates (mounted checks)
+   - User feedback for all states
+   - No app crashes on errors
+
+================================================================================
+

@@ -1,0 +1,47 @@
+--| User clicks "Submit" button |--
+    |
+    |--> [Some UI Widget, e.g., PromptInputArea]
+         |
+         |--> Calls a method in [PromptManager] (or a similar UI-handling class)
+              |
+              |--> Determines if it's a new prompt or a sub-prompt based on `PromptArgs`.
+                   |
+                   |---< Scenario A: New Prompt (No parent shard ID) >---
+                   |    |
+                   |    |--> [PointManager.createPointFromPrompt(promptArgs)]
+                   |         |
+                   |         |--> Calls [BackendService.getOrCreatePoint(promptArgs)] -> returns `Point` object.
+                   |         |
+                   |         |--> Calls [BackendService.savePointInDb(newPoint)] -> saves the newly created point.
+                   |         |
+                   |         |--> Returns the new `Point` object.
+                   |
+                   |---< Scenario B: Sub-Prompt (Has a parent shard ID) >---
+                        |
+                        |--> [PointManager.createPointFromSubPrompt(promptArgs)]
+                             |
+                             |--> Calls [PointManager.createPointFromPrompt(promptArgs)] to create the new child point -> returns `newPoint`.
+                             |
+                             |--> Calls [BackendService.getPointById(parentPointId)] to get the parent point -> returns `parentPoint`.
+                             |
+                             |--> Calls [ShardManager.addShardToParentPoint(newPointId, parentPoint, promptArgs)]
+                             |    |
+                             |    |--> [ShardManager.createShard(...)]
+                             |    |    |
+                             |    |    |--> Creates an `Anchor` object with text selection details.
+                             |    |    |
+                             |    |    |--> Creates and returns a `Shard` object containing the new point's ID and the anchor.
+                             |    |
+                             |    |--> [ShardManager.updateShardsList(...)]
+                             |    |    |
+                             |    |    |--> [ShardManager.findInsertionIndex(...)] -> returns the correct index to insert the new shard.
+                             |    |    |
+                             |    |    |--> Inserts the new shard into a copy of the parent's shard list and returns the `updatedShardsList`.
+                             |    |
+                             |    |--> Creates an `updatedParentPoint` with the new shards list.
+                             |    |
+                             |    |--> Calls [BackendService.savePointInDb(updatedParentPoint)] to persist the changes.
+                             |    |
+                             |    |--> Returns the `updatedParentPoint`.
+                             |
+                             |--> Returns the `updatedParentPoint` to the caller.

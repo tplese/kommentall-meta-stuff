@@ -1,0 +1,134 @@
+
+Thread-001
+	Id: ObjectId
+	Parent: null
+	DirectChildren: [Thread-002, Thread-003]
+	AnchorChildren: [Thread-004, Thread-005]
+		
+		Thread-002
+			Id: ObjectId
+			Parent: null
+			DirectChildren: [Thread-002, Thread-003]
+			AnchorChildren: [Thread-004, Thread-005]
+			
+-------------------------------------------------------------------------
+
+
+
+1. CREATE TREE VIEW - DOWN the Thread:
+	
+	|- Thread-001
+	|- DirChild: Thread-002
+	|  | - AnchorChild: Thread-003
+	|  |  | - DirectChild: Thread-006
+	|  | - AnchorChild: Thread-005
+	|- DirChild: Thread-004
+	
+	
+	1. Version - with Children = list of Threads
+		Thread-001: Parent: null, DirectChildren[002, 004], AnchorChildren[]
+		|
+		Thread-002: Parent: 001, DirectChildren[], AnchorChildren[003, 005]
+		|	|
+		|	Thread-003: Parent: 002, DirectChildren[006], AnchorChildren[]
+		|	|
+		|   Thread-006: Parent: 003, DirectChildren[], AnchorChildren[]
+		|	
+		Thread-004: Parent: 002, DirectChildren[], AnchorChildren[]
+	
+	2. Version - with Child = single Thread
+		Node: Thread-001: Parent: null, DirectChild: 002, AnchorChildren[]
+		|
+		Node 1/2: Thread-002: Parent: 001, DirectChild: 004, AnchorChildren[003, 005]
+		|  | AnchorChild-003: Parent: 002, DirectChild: 006, AnchorChildren[]
+		|  |  | Thread006
+		Node 2/2: Thread-002: Parent: 001, DirectChild: 004, AnchorChildren[003, 005]
+		|  | AnchorChild-005, Parent: 002, DirectChild: null, AnchorChildren[]
+		|
+		Thread-004: Parent: 002, DirectChild, AnchorChildren[]
+	
+OVA: 3. Version - with Child = single Thread, node shards
+		Node: Thread-001: DirectChild: 002, AnchorChildren[]
+		|
+		Node 1/2: Thread-002: DirectChild: 004, AnchorChildren[003, 005]
+		|  | AnchorChild-003: DirectChild: null, AnchorChildren[]
+		|  |  | Thread-006: DirectChild: null, AnchorChildren[]
+		Node 2/2: Thread-002: DirectChild: 004, AnchorChildren[003, 005]
+		|  | AnchorChild-005: DirectChild: null, AnchorChildren[]
+		|
+		Thread-004: DirectChild: null, AnchorChildren[]
+		
+		- Direct: ide od vrha do Thread koji ima DirectChild=null
+		- Anchor.isNotEmpty: ide po listi
+
+
+
+2. CREATE MESSAGE CONTEXT - UP the Thread:
+	
+	|- Rung: Thread-001
+	|- Shard-1/3: Thread-002
+	|  | - Anchor: Thread-003
+	|  |  | - Rung: Thread-016
+	|  |  | - Shard-1/3: Thread-006
+	|  |  |  |  - Anchor: Thread-007
+	|  |  |  |  |  - Rung: Thread-008
+	|  |  |  |  |  - Rung: Thread-009
+	|  |  |  |  |  - Rung: Thread-013
+	|  |  | - Shard-2/3: Thread-010
+	|  |  |  |  - Anchor: Thread-014
+	|  |  |  |  |  - Rung: Thread-018
+	|  |  |  |  |  - Rung: Thread-019
+	|  |  | - Shard-3/3: Thread-015
+	|  |  | - Rung: Thread-017
+	|- Shard-2/3: Thread-011
+	|  | - Anchor: Thread-005
+	|- Shard-3/3: Thread-004
+	|- Rung: Thread-012
+
+
+- Database: 
+	Parent:
+	Children List:
+	Shard List: 
+- ListView: Shard=DirectChild
+	Anchor closed: Node1 = Shard1/2 + Shard2/2
+	Anchor opened: Node1 = Shard1/2; Node2 = Shard2/2
+	
+	Messages in Context of 009: [009, 008, 007, 006, 016, 003, 002, 001]
+		Thread-009: 
+			1. Children-List: 	null
+			2. Shards-List: 	null
+			3. Parent-String: 	007 
+			not used: 
+				Anchored-Bool: 	false
+				Anchors-List: 	null
+		Thread-007
+			1. Children: [008, 009, 013]
+				- get list of Children from Parent
+				- iterate end-to-begining till you get to Thread-009 - disregard previous threads
+				- continue iterating end-to-begining - take all children into messages
+			2. Shards: null
+			3. Parent: 006 
+			not used:
+				Anchored: true
+				Anchors: null
+		Thread-006
+			1. Children: null
+			2. Shars-List: [1: 006, 2: 010, 3: 015]
+				- iterate end-to-begining till shard with thread 006
+				- continue iterating end-to-begining - take all shards into messages
+			3. Parent: 003
+				1. Children: [Shards: 006, 010, 015]
+
+	1. Version - Messages in Context of 006
+		Thread-006: Parent: 003, Anchored: false, SelectedText: null
+		|
+		AnchorChild-003: Parent: 002, Anchored: true, SelectedText: "text" 
+
+	2. Version - Messages in Context of 009
+		Thread-009: 008, Anchored: false, SelectedText: null
+		|
+		Thread-008: Parent: 007, Anchored: false, SelectedText: null
+		|
+		AnchorChild-007: Parent: 006, Anchored: true, SelectedText: "text"
+		

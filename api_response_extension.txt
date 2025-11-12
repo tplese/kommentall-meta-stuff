@@ -1,0 +1,8 @@
+import 'api_response.dart';
+
+extension ConversationValidation on ConversationThreadDTO {
+  bool isValid() {
+    return conversation.isNotEmpty &&
+        conversation.last.response.choices.isNotEmpty;
+  }
+}

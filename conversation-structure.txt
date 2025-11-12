@@ -1,0 +1,223 @@
+I have this structure of a conversation:
+CONVERSATION ROOT
+|- Prompt-01-lvl1
+|- Response-01-lvl1
+|    |- Prompt-04-lvl2
+|    |- Response-04-lvl2
+|	 |    |- Prompt-05-lvl3
+|	 |    |- Response-05-lvl3
+|	 |	  |    |- Prompt-06-lvl4
+|	 |	  |    |- Response-06-lvl4
+|	 |- Prompt-07-lvl2
+|	 |- Response-07-lvl2
+|	 |    |- Prompt-08-lvl3
+|	 |    |- Response-08-lvl3
+|- Prompt-02-lvl1
+|- Response-02-lvl1 (first part of response, from start to the anchor)
+|    |- Prompt-09-lvl2 (anchor, only the sub-string of the Response-02-lvl1 that is selected by the user)
+|    |- Response-09-lvl2
+|	 |    |- Prompt-10-lvl3
+|	 |    |- Response-10-lvl3
+|	 |    |    |- Prompt-11-lvl4
+|	 |    |    |- Response-11-lvl4
+|- Response-02-lvl1 (second part of response, after the anchor)
+|    |- Prompt-13-lvl2
+|    |- Response-13-lvl2
+|	 |    |- Prompt-14-lvl3
+|	 |    |- Response-14-lvl3
+|- Prompt-03-lvl1
+|- Response-03-lvl1
+|    |- Prompt-12-lvl2
+|    |- Response-12-lvl2
+
+
+CONVERSATION
+|- Conversation-001  // (lvl1) (Parent: null)
+|	 |    
+|- Conversation-02-lvl2
+|    |- Conversation-03-lvl2
+|	 |    |- Prompt-01-lvl3
+|	 |    |- Answer-01-lvl3
+|		  |    |- Prompt-01-lvl4
+|		  |    |- Answer-01-lvl4
+|	 |- Prompt-02-lvl2
+|	 |- Answer-02-lvl2
+|	 |    |- Prompt-01-lvl3
+|	 |    |- Answer-01-lvl3
+|- Conversation-02-lvl1
+|- Answer-02-lvl1
+|    |- Prompt-01-lvl2
+|    |- Answer-01-lvl2
+|	 |    |- Prompt-01-lvl3
+|	 |    |- Answer-01-lvl3
+|	 |    |    |- Prompt-01-lvl4
+|	 |    |    |- Answer-01-lvl4
+|- Prompt-03-lvl1
+|- Answer-03-lvl1
+|    |- Prompt-01-lvl2
+|    |- Prompt-01-lvl2
+
+
+
+
+CONVERSATION ROOT
+|- Prompt-01-lvl1
+|- Response-01-lvl1
+|    |- Prompt-04-lvl2
+|    |- Response-04-lvl2
+|	 |    |- Prompt-05-lvl3
+|	 |    |- Response-05-lvl3
+|	 |	  |    |- Prompt-06-lvl4
+|	 |	  |    |- Response-06-lvl4
+|	 |- Prompt-07-lvl2
+|	 |- Response-07-lvl2
+|	 |    |- Prompt-08-lvl3
+|	 |    |- Response-08-lvl3
+|- Prompt-02-lvl1
+|- Response-02-lvl1
+|    |- Prompt-09-lvl2
+|    |- Response-09-lvl2
+|	 |    |- Prompt-10-lvl3
+|	 |    |- Response-10-lvl3
+|	 |    |    |- Prompt-11-lvl4
+|	 |    |    |- Response-11-lvl4
+|- Prompt-03-lvl1
+|- Response-03-lvl1
+|    |- Prompt-12-lvl2
+|    |- Response-12-lvl2
+
+
+-----------------------------------------------------------------------------------------------------------------
+{
+	_id: ObjectId("Root"),
+	"title": "Root"
+	topThreads: [
+		{Thread-001},
+		{Thread-004},
+		...
+	],
+	created: ISODate("2025-02-08T14:00:00Z",
+	modified: ISODate("2025-02-08T14:00:00Z",
+	modifiedCount: 3,
+	lastAccessed: ISODate("2025-02-08T14:00:00Z",
+}
+
+{
+	_id: ObjectId("Thread-001"), 
+	threadTitle: "Main Discussion", 
+	parentThread: Root, // for child "Thread-002" and "Thread-003", the value will be "Thread-001"
+	path: "Thread-001", // for child "Thread-002": e.g. "Thread-001/Thread-002"
+	anchors: {
+		"deviant": ["Thread-002"]  // Inline concept linking
+		"person": ["Thread-003"] // Inline concept linking
+	},
+	conversation: [
+		{ 
+			exchangeId: "exchange001",
+			prompt: {},
+			response: {},
+		},
+		{
+			exchangeId: "exchange002",
+			prompt: {
+				"model":"gpt-3.5-turbo",
+				"messages": {
+					userPrompt: {
+						role: "user",
+						content: "What is deviant person?"
+					},
+					systemPrompt: {
+						role: "system",
+						content: "Write in English.",
+					},
+					assistantPrompt: { //Don't include - it's previous context:  
+						role: "assistant",
+						content: ""
+					}
+				},
+				"max_tokens": 30
+			},
+			response: {
+				"id": "chatcmpl-AsTE53BjNrTkxckm7L2wqYC2zR4QG", 
+				"object": "chat.completion",
+				"created": 1737545421, 
+				"model": "gpt-3.5-turbo-0125", 
+				"choices": [
+					{
+						"index": 0,
+						"message": { 
+							"role": "assistant", 
+							"content": "This is a [deviant]{thread=Thread-002} [person]{thread=Thread-003}.",
+							
+							"anchors": [
+								{
+									threadId: "Thread-002", - Thread's ObjectId
+									text: "deviant",
+									startPos: 10,
+									endPos: 17,
+									
+								},
+								{
+									threadId: "Thread-003"
+									text: "person",
+									startPos: 39,
+									endPos: 45,
+									
+								}
+							],								
+							"refusal": null
+						}, 
+						"logprobs": null, 
+						"finish_reason": "stop" 
+					}
+				], 
+				"usage": { 
+					"prompt_tokens": 18, 
+					"completion_tokens": 12, 
+					"total_tokens": 30, 
+					"prompt_tokens_details": { 
+						"cached_tokens": 0, 
+						"audio_tokens": 0 
+					}, 
+					"completion_tokens_details": { 
+						"reasoning_tokens": 0, 
+						"audio_tokens": 0, 
+						"accepted_prediction_tokens": 0, 
+						"rejected_prediction_tokens": 0 
+					}
+				}, 
+				"service_tier": "default", 
+				"system_fingerprint": null 
+			}
+		},
+	],
+	metadata: {
+		openState: true, 
+		created: ISODate("2025-02-08T14:00:00Z",
+		modified: ISODate("2025-02-08T14:00:00Z",
+		modifiedCount: 3,
+		lastAccessed: ISODate("2025-02-08T14:00:00Z",
+		hotness: 42 // Calculated engagement score
+	}
+}
+
+
+---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
+
+Thread-001 {
+	child: Thread-002 {
+		child: Thread-003 {
+			child: Thread-004 {}
+		}
+	}
+}
+			
+			
+Thread-001 {
+	children: [Thread-002, Thread-003, Thread-004...]
+}
+
+Thread-002 {
+	children: [Thread-005, Thread-006...]
+}

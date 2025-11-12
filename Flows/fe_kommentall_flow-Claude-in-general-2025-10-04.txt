@@ -1,0 +1,320 @@
+================================================================================
+FE_KOMMENTALL - FLUTTER APPLICATION FLOW
+TestAI Project - Frontend Flow Documentation
+================================================================================
+
+FLOW A: MAIN PROMPT SUBMISSION
+================================================================================
+
+1. UI Layer (Presentation)
+   │
+   ├─> ChatScreen (StatefulWidget)
+   │   └─> _ChatScreenState
+   │       └─> _onSubmitPressed()
+   │           ├─> Validates prompt text (non-empty)
+   │           ├─> Creates PromptDTO object
+   │           └─> Calls service layer
+   │               Returns: void
+   │
+   ├─> Submit Button Widget
+   │   └─> onPressed: () => _onSubmitPressed()
+   │       Returns: void
+   │
+   └─> TextField Widget
+       └─> TextEditingController _promptController
+           Returns: String (prompt text)
+
+2. Service Layer (Business Logic)
+   │
+   └─> ChatService
+       └─> Future<PointDTO?> sendPrompt(PromptDTO prompt, String modelType)
+           ├─> Calls repository layer
+           ├─> Handles success/error states
+           ├─> Updates local state if needed
+           └─> Returns: Future<PointDTO?> (Point with exchanges or null on error)
+
+3. Repository Layer (Data Access)
+   │
+   └─> ChatRepository
+       └─> Future<PointDTO?> postPrompt(PromptDTO prompt, String modelType)
+           ├─> Builds HTTP POST request to backend
+           │   Endpoint: POST /api/chat/prompt
+           │   Headers: Content-Type: application/json
+           │   Body: {
+           │     "message": "user prompt text",
+           │     "modelType": "gpt-4" | "claude-3" | "perplexity"
+           │   }
+           ├─> Sends request via http package
+           ├─> Awaits response
+           ├─> Parses JSON response to PointDTO
+           ├─> Handles HTTP errors (404, 500, timeout)
+           └─> Returns: Future<PointDTO?> (Point or null)
+
+4. Model Layer (Data Transfer Objects)
+   │
+   ├─> PromptDTO
+   │   ├─> String message
+   │   ├─> String? modelType
+   │   ├─> factory PromptDTO.fromJson(Map<String, dynamic> json)
+   │   │   Returns: PromptDTO
+   │   └─> Map<String, dynamic> toJson()
+   │       Returns: Map<String, dynamic>
+   │
+   ├─> ResponseDTO
+   │   ├─> String message
+   │   ├─> DateTime timestamp
+   │   ├─> factory ResponseDTO.fromJson(Map<String, dynamic> json)
+   │   │   Returns: ResponseDTO
+   │   └─> Map<String, dynamic> toJson()
+   │       Returns: Map<String, dynamic>
+   │
+   ├─> ExchangeDTO
+   │   ├─> String id
+   │   ├─> PromptDTO prompt
+   │   ├─> ResponseDTO response
+   │   ├─> factory ExchangeDTO.fromJson(Map<String, dynamic> json)
+   │   │   Returns: ExchangeDTO
+   │   └─> Map<String, dynamic> toJson()
+   │       Returns: Map<String, dynamic>
+   │
+   └─> PointDTO
+       ├─> String id
+       ├─> List<ExchangeDTO> exchanges
+       ├─> DateTime createdAt
+       ├─> factory PointDTO.fromJson(Map<String, dynamic> json)
+       │   Returns: PointDTO
+       └─> Map<String, dynamic> toJson()
+           Returns: Map<String, dynamic>
+
+5. State Management (Response Handling)
+   │
+   └─> _ChatScreenState
+       └─> void _handlePromptResponse(PointDTO? point)
+           ├─> if (point == null)
+           │   └─> Shows error SnackBar
+           │       Returns: void
+           ├─> Updates state with new point
+           │   └─> setState(() { _currentPoint = point; })
+           │       Returns: void
+           └─> Triggers tree view rebuild
+               Returns: void
+
+6. UI Update (Tree View Display)
+   │
+   └─> TreeViewWidget (using tree_view_flutter)
+       └─> build(BuildContext context)
+           ├─> Reads _currentPoint from state
+           ├─> Maps exchanges to tree nodes
+           │   └─> _buildTreeNodes(List<ExchangeDTO> exchanges)
+           │       ├─> For each exchange:
+           │       │   └─> Creates TreeNode with:
+           │       │       ├─> Prompt message (parent)
+           │       │       └─> Response message (child)
+           │       └─> Returns: List<TreeNode>
+           └─> Returns: Widget (TreeView)
+
+
+================================================================================
+FLOW B: SUB-PROMPT SUBMISSION (Follow-up question)
+================================================================================
+
+1. UI Layer (Tree View Interaction)
+   │
+   ├─> TreeViewWidget
+   │   └─> TreeNode
+   │       └─> onTap: (TreeNode node)
+   │           ├─> Extracts exchange ID from node
+   │           ├─> Shows sub-prompt dialog
+   │           └─> _showSubPromptDialog(String parentExchangeId)
+   │               Returns: void
+   │
+   └─> SubPromptDialog (Custom Dialog)
+       ├─> TextField _subPromptController
+       └─> Submit Button
+           └─> onPressed: () => _onSubPromptSubmitted()
+               Returns: void
+
+2. Dialog Handler
+   │
+   └─> _ChatScreenState
+       └─> Future<void> _onSubPromptSubmitted(
+               String parentExchangeId,
+               String subPromptText
+           )
+           ├─> Validates sub-prompt text
+           ├─> Creates SubPromptDTO object
+           │   └─> SubPromptDTO(
+           │       message: subPromptText,
+           │       parentExchangeId: parentExchangeId
+           │   )
+           ├─> Closes dialog
+           └─> Calls service layer
+               Returns: Future<void>
+
+3. Service Layer (Business Logic)
+   │
+   └─> ChatService
+       └─> Future<PointDTO?> sendSubPrompt(
+               SubPromptDTO subPrompt,
+               String modelType
+           )
+           ├─> Calls repository layer
+           ├─> Handles success/error states
+           └─> Returns: Future<PointDTO?> (Updated Point or null)
+
+4. Repository Layer (Data Access)
+   │
+   └─> ChatRepository
+       └─> Future<PointDTO?> postSubPrompt(
+               SubPromptDTO subPrompt,
+               String modelType
+           )
+           ├─> Builds HTTP POST request to backend
+           │   Endpoint: POST /api/chat/sub-prompt
+           │   Headers: Content-Type: application/json
+           │   Body: {
+           │     "message": "sub-prompt text",
+           │     "parentExchangeId": "uuid-of-parent",
+           │     "modelType": "gpt-4" | "claude-3" | "perplexity"
+           │   }
+           ├─> Sends request via http package
+           ├─> Awaits response
+           ├─> Parses JSON response to PointDTO
+           ├─> Handles HTTP errors
+           └─> Returns: Future<PointDTO?> (Updated Point with new exchange or null)
+
+5. Model Layer (Additional DTO)
+   │
+   └─> SubPromptDTO
+       ├─> String message
+       ├─> String parentExchangeId
+       ├─> String? modelType
+       ├─> factory SubPromptDTO.fromJson(Map<String, dynamic> json)
+       │   Returns: SubPromptDTO
+       └─> Map<String, dynamic> toJson()
+           Returns: Map<String, dynamic>
+
+6. State Management (Response Handling)
+   │
+   └─> _ChatScreenState
+       └─> void _handleSubPromptResponse(PointDTO? updatedPoint)
+           ├─> if (updatedPoint == null)
+           │   └─> Shows error SnackBar
+           │       Returns: void
+           ├─> Updates state with updated point
+           │   └─> setState(() { _currentPoint = updatedPoint; })
+           │       Returns: void
+           └─> Triggers tree view rebuild with new sub-exchange
+               Returns: void
+
+7. UI Update (Tree View Expansion)
+   │
+   └─> TreeViewWidget
+       └─> build(BuildContext context)
+           ├─> Reads _currentPoint from state
+           ├─> Rebuilds tree with new structure
+           │   └─> _buildTreeNodes(List<ExchangeDTO> exchanges)
+           │       ├─> For each exchange:
+           │       │   ├─> Creates TreeNode (Prompt → Response)
+           │       │   └─> If exchange has child exchanges:
+           │       │       └─> Recursively creates child TreeNodes
+           │       └─> Returns: List<TreeNode>
+           └─> Auto-expands to show new sub-prompt/response
+               Returns: Widget (TreeView with expanded nodes)
+
+
+================================================================================
+ERROR HANDLING FLOW (Applies to both Flow A and B)
+================================================================================
+
+1. Repository Layer Error Handling
+   │
+   └─> ChatRepository
+       └─> try-catch in postPrompt() / postSubPrompt()
+           ├─> catch (SocketException e)
+           │   └─> Returns: null (Network error)
+           ├─> catch (TimeoutException e)
+           │   └─> Returns: null (Request timeout)
+           ├─> catch (HttpException e)
+           │   └─> Returns: null (HTTP error)
+           ├─> catch (FormatException e)
+           │   └─> Returns: null (JSON parse error)
+           └─> catch (Exception e)
+               └─> Returns: null (Unknown error)
+
+2. Service Layer Error Handling
+   │
+   └─> ChatService
+       └─> sendPrompt() / sendSubPrompt()
+           ├─> if (result == null)
+           │   ├─> Logs error
+           │   └─> Returns: null
+           └─> Returns: PointDTO
+
+3. UI Layer Error Display
+   │
+   └─> _ChatScreenState
+       └─> _handlePromptResponse() / _handleSubPromptResponse()
+           └─> if (point == null)
+               └─> ScaffoldMessenger.of(context).showSnackBar(
+                   SnackBar(
+                     content: Text('Failed to send message. Please try again.'),
+                     backgroundColor: Colors.red,
+                     action: SnackBarAction(
+                       label: 'Retry',
+                       onPressed: () => _retryLastRequest()
+                     )
+                   )
+                   Returns: void
+
+
+================================================================================
+HTTP CLIENT CONFIGURATION
+================================================================================
+
+└─> ApiClient (Singleton)
+    ├─> http.Client _client
+    ├─> String baseUrl (from config)
+    ├─> Duration timeout = Duration(seconds: 30)
+    │
+    ├─> Future<http.Response> post(String endpoint, Map<String, dynamic> body)
+    │   ├─> Builds Uri from baseUrl + endpoint
+    │   ├─> Sets headers (Content-Type, Authorization if needed)
+    │   ├─> Encodes body to JSON
+    │   ├─> Sends request with timeout
+    │   └─> Returns: Future<http.Response>
+    │
+    └─> void dispose()
+        └─> Closes client connection
+            Returns: void
+
+
+================================================================================
+KEY DEPENDENCIES (pubspec.yaml)
+================================================================================
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0                    # HTTP requests
+  tree_view_flutter: ^0.0.2       # Tree view widget
+  provider: ^6.1.0                # State management (optional)
+  equatable: ^2.0.5               # Value equality (optional)
+
+
+================================================================================
+NOTES
+================================================================================
+
+1. All async operations use Future<T?> pattern with null safety
+2. Error handling is non-crashing (returns null, shows user-friendly messages)
+3. Tree view updates automatically via setState() triggers
+4. HTTP timeout is 30 seconds (configurable)
+5. Sub-prompts maintain parent-child relationship via parentExchangeId
+6. Backend API endpoints:
+   - POST /api/chat/prompt (for main prompts)
+   - POST /api/chat/sub-prompt (for follow-up questions)
+7. All DTOs support JSON serialization (fromJson/toJson)
+8. State management can be enhanced with Provider/Riverpod/BLoC if needed
+
+================================================================================

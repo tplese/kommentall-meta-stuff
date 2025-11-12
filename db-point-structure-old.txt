@@ -1,0 +1,72 @@
+{
+  "_id": {
+    "$oid": "6832d4d224094884c05d03da"
+  },
+  "parentPointId": {
+    "$oid": "6832d4d224094884c05d03da"
+  },
+  "exchangeList": [
+    {
+      "exchangeId": {
+        "$oid": "6832d4d224094884c05d03db"
+      },
+      "prompt": {
+        "model": "gpt-3.5-turbo",
+        "promptMessage": {
+          "role": "user",
+          "content": "say hello"
+        },
+        "maxTokens": 30
+      },
+      "response": {
+        "_id": "chatcmpl-Bb11hsArtWGobsx6FLEQsM9l2ZAPe",
+        "object": "chat.completion",
+        "created": {
+          "$numberLong": "1748161781"
+        },
+        "model": "gpt-3.5-turbo-0125",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Hello!"
+            },
+            "finishReason": "stop"
+          }
+        ],
+        "usage": {
+          "promptTokens": 20,
+          "completionTokens": 2,
+          "totalTokens": 22,
+          "promptTokensDetails": {
+            "cachedTokens": 0,
+            "audioTokens": 0
+          },
+          "completionTokensDetails": {
+            "reasoningTokens": 0,
+            "audioTokens": 0,
+            "acceptedPredictionTokens": 0,
+            "rejectedPredictionTokens": 0
+          }
+        },
+        "serviceTier": "default"
+      }
+    }
+  ],
+  "metadata": {
+    "openState": true,
+    "created": {
+      "$date": "2025-05-25T08:29:16.026Z"
+    },
+    "modified": {
+      "$date": "2025-05-25T08:29:16.026Z"
+    },
+    "modifiedCount": 0,
+    "lastAccessed": {
+      "$date": "2025-05-25T08:29:16.026Z"
+    },
+    "hotness": 0
+  },
+  "_class": "com.kommentall.model.mongodb.Point"
+}

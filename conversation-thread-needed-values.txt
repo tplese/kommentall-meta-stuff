@@ -1,0 +1,96 @@
+ODMAH: 
+	public class ConversationThread {
+		+private ObjectId id;
+		+private String parentThread;
+		+private List<ObjectId> directChildren;
+		+private List<Exchange> conversation;
+	}
+	
+	public static class Exchange {
+        private String exchangeId;
+        private Prompt prompt;
+        private Response response;
+    }
+	
+	public static class Prompt {
+        private String model;
+        private Map<String, PromptMessage> promptMessagesMap;
+        private int maxTokens;
+    }
+	
+	public static class PromptMessage {
+        private String role;
+        private String content;
+    }
+	
+	public static class Response {
+        private String id;
+        private String object;
+        private long created;
+        private String model;
+        private List<Choice> choices;
+        private Usage usage;
+        private String serviceTier;
+        private String systemFingerprint;
+    }
+	
+	public static class Choice {
+        private int index;
+        private Message message;
+        private Object logprobs;
+        private String finishReason;
+    }
+	
+	public static class Message {
+        private String role;
+        private String content;
+        private List<Anchor> anchorChildren;
+        private String refusal;
+    }
+	
+	public static class Anchor {
+        private String threadId;
+		private String selectedText;
+        private int startPos;
+        private int endPos;
+    }
+	
+	public static class Usage {
+        private int promptTokens;
+        private int completionTokens;
+        private int totalTokens;
+        private PromptTokensDetails promptTokensDetails;
+        private CompletionTokensDetails completionTokensDetails;
+    }
+	
+	public static class PromptTokensDetails {
+        private int cachedTokens;
+        private int audioTokens;
+    }
+	
+	public static class CompletionTokensDetails {
+        private int reasoningTokens;
+        private int audioTokens;
+        private int acceptedPredictionTokens;
+        private int rejectedPredictionTokens;
+    }
+	
+
+KASNIJE:
+	public class ConversationThread {
+		private String threadTitle;
+		private String path;
+		private Map<String, List<String>> anchors;
+		private Metadata metadata;
+	}
+
+	
+    
+	public static class Metadata {
+        private boolean openState;
+        private Date created;
+        private Date modified;
+        private int modifiedCount;
+        private Date lastAccessed;
+        private int hotness;
+    }

@@ -1,0 +1,969 @@
+================================================================================
+FE_KOMMENTALL - DETAILED UI LAYER FLOW
+TestAI Project - UI Components & Tree View Architecture
+Based on Actual Implementation in Android Studio
+================================================================================
+
+
+================================================================================
+PART 1: UI LAYER OVERVIEW
+================================================================================
+
+UI HIERARCHY:
+HomeScreen (StatefulWidget)
+  └─> HomeScreenState
+      └─> Widget build()
+          └─> Scaffold
+              └─> Column
+                  ├─> CircularProgressIndicator (if isLoading)
+                  ├─> Error Container (if errorMessage != null)
+                  ├─> CustomScrollView (if threadMap.isNotEmpty)
+                  │   └─> TreeSliverThread
+                  │       └─> SliverList.builder
+                  │           └─> TreeSliverItem (for each node)
+                  │               └─> Card with InkWell
+                  │                   ├─> Expansion Header (if hasChildren)
+                  │                   ├─> Prompt Section
+                  │                   ├─> Response Section or Loading/Waiting Status
+                  │                   └─> SelectableText with Context Menu
+                  └─> PromptInputField
+
+
+================================================================================
+PART 2: HOMESCREEN COMPONENT (lib/screens/home_screen.dart)
+================================================================================
+
+CLASS: HomeScreen extends StatefulWidget
+│
+└─> PROPERTIES:
+    └─> const HomeScreen({super.key})
+    
+└─> STATE: HomeScreenState createState()
+    Returns: HomeScreenState
+
+
+CLASS: HomeScreenState extends State<HomeScreen>
+│
+├─> STATE VARIABLES:
+│   ├─> BackendService backendService
+│   ├─> PointManager pointManager
+│   ├─> ShardManager shardManager
+│   ├─> HomeScreenManager homeScreenManager
+│   ├─> ThreadManager threadManager
+│   ├─> TreeViewManager treeViewManager
+│   ├─> ContextManager contextManager
+│   ├─> ApiServicesAbstract currentApiService = OpenAIService()
+│   ├─> Map<String, Point> threadMap = {} (stores all conversation points)
+│   ├─> List<Point> treeViewList = [] (points to display in tree)
+│   ├─> PromptArgs promptArgs (current prompt context)
+│   ├─> Set<String> loadingExchanges = {} (tracks loading exchanges)
+│   ├─> GlobalKey<PromptInputFieldState> promptInputFieldKey
+│   ├─> bool isLoading = false (global loading state)
+│   └─> String? errorMessage (error display)
+│
+├─> LIFECYCLE METHODS:
+│   │
+│   ├─> void initState()
+│   │   ├─> Initializes: promptArgs = PromptArgs(currentPointId: '', isShardChild: false)
+│   │   ├─> Creates: backendService = BackendService()
+│   │   ├─> Creates: pointManager = PointManager(backendService)
+│   │   ├─> Creates: treeViewManager = TreeViewManager()
+│   │   ├─> Creates: shardManager = ShardManager(pointManager, backendService)
+│   │   ├─> Creates: threadManager = ThreadManager(
+│   │   │       pointManager, shardManager, backendService,
+│   │   │       threadMap, onMapUpdated
+│   │   │   )
+│   │   ├─> Creates: contextManager = ContextManager(
+│   │   │       threadManager, apiService, threadMap
+│   │   │   )
+│   │   ├─> Creates: homeScreenManager = HomeScreenManager(
+│   │   │       pointManager, shardManager, threadManager,
+│   │   │       treeViewManager, contextManager, threadMap,
+│   │   │       onMapUpdated, onLoadingStateChanged,
+│   │   │       onErrorOccurred, onClearPromptInput
+│   │   │   )
+│   │   └─> super.initState()
+│   │       Returns: void
+│   │
+│   └─> void dispose()
+│       └─> super.dispose()
+│           Returns: void
+│
+├─> CALLBACK METHODS:
+│   │
+│   ├─> void onMapUpdated()
+│   │   ├─> Purpose: Called when threadMap changes
+│   │   └─> if (mounted): setState(() {})
+│   │       Returns: void
+│   │
+│   ├─> void showErrorSnackBar(String message)
+│   │   ├─> Purpose: Displays error to user
+│   │   ├─> if (!mounted): return
+│   │   └─> ScaffoldMessenger.of(context).showSnackBar(
+│   │       SnackBar(
+│   │         content: Text(message),
+│   │         backgroundColor: Colors.red,
+│   │         behavior: SnackBarBehavior.floating,
+│   │         action: SnackBarAction(label: 'Dismiss', onPressed: ...)
+│   │       )
+│   │   )
+│   │       Returns: void
+│   │
+│   └─> void startNewConversation()
+│       ├─> Purpose: Clears current conversation
+│       └─> try:
+│           ├─> setState(() {
+│           │   threadMap.clear()
+│           │   treeViewList.clear()
+│           │   loadingExchanges.clear()
+│           │   promptArgs = promptArgs.clear()
+│           │ })
+│           └─> catch (e): showErrorSnackBar('Failed to start...')
+│           Returns: void
+│
+├─> NODE INTERACTION METHODS:
+│   │
+│   ├─> void onNodeSelected(String currentPointId)
+│   │   ├─> Purpose: Handles tree node selection
+│   │   └─> try:
+│   │       ├─> setState(() {
+│   │       │   promptArgs = PromptArgs(
+│   │       │     currentPointId: currentPointId,
+│   │       │     parentPointId: currentPointId,
+│   │       │     isShardChild: false
+│   │       │   )
+│   │       │ })
+│   │       ├─> promptInputFieldKey.currentState?.focusInput()
+│   │       └─> catch (e): debugPrint('Error in node selection: $e')
+│   │       Returns: void
+│   │
+│   └─> void prepareSubPromptInput(PromptArgs promptArgs)
+│       ├─> Purpose: Prepares input field for sub-prompt from text selection
+│       ├─> Parameters:
+│       │   └─> PromptArgs promptArgs (contains selectedText, positions, etc.)
+│       │
+│       └─> Flow:
+│           ├─> Validates: promptArgs.selectedText not null and not empty
+│           │   └─> If empty: showErrorSnackBar('No text selected'), return
+│           │
+│           ├─> Updates state:
+│           │   └─> setState(() {
+│           │       errorMessage = null
+│           │       this.promptArgs = promptArgs.copyWith(
+│           │         currentPointId: promptArgs.currentPointId,
+│           │         isShardChild: true
+│           │       )
+│           │   })
+│           │
+│           ├─> Shows feedback:
+│           │   └─> ScaffoldMessenger.showSnackBar(
+│           │       SnackBar(content: Text('Text copied to input...'))
+│           │   )
+│           │
+│           └─> WidgetsBinding.instance.addPostFrameCallback((_) {
+│               try:
+│                 ├─> if (mounted && promptInputFieldKey.currentState != null):
+│                 │   ├─> if (selectedText not null and not empty):
+│                 │   │   ├─> promptInputFieldKey.currentState!.setText(selectedText)
+│                 │   │   └─> promptInputFieldKey.currentState!.focusInput()
+│                 │   └─> else: promptInputFieldKey.currentState!.clearText()
+│                 └─> catch (e): showErrorSnackBar('Failed to set text...')
+│           })
+│           Returns: void
+│
+├─> PROMPT SUBMISSION METHOD:
+│   │
+│   └─> Future<void> onPrompt(String promptText)
+│       ├─> Purpose: Main entry point when user submits a prompt
+│       ├─> Parameters:
+│       │   └─> String promptText (user's input from PromptInputField)
+│       │
+│       └─> Flow:
+│           ├─> setState(() { errorMessage = null })
+│           │
+│           ├─> try:
+│           │   ├─> Determines prompt type:
+│           │   │   └─> bool isSubPrompt = promptArgs.isShardChild
+│           │   │
+│           │   ├─> Creates currentPromptArgs:
+│           │   │   ├─> if (isSubPrompt):
+│           │   │   │   └─> currentPromptArgs = promptArgs (existing)
+│           │   │   └─> else (regular prompt):
+│           │   │       └─> currentPromptArgs = PromptArgs(
+│           │   │           currentPointId: treeViewList.last.id or '',
+│           │   │           parentPointId: treeViewList.last.id or null,
+│           │   │           isShardChild: false
+│           │   │       )
+│           │   │
+│           │   ├─> Calls: await homeScreenManager.handlePrompt(
+│           │   │     promptText: promptText,
+│           │   │     promptArgs: currentPromptArgs,
+│           │   │     updatePromptArgs: (newArgs) => setState callback,
+│           │   │     treeViewList: treeViewList,
+│           │   │     updateTreeViewList: (newList) => setState callback,
+│           │   │     loadingExchanges: loadingExchanges,
+│           │   │     updateLoadingExchanges: (newSet) => setState callback
+│           │   │   )
+│           │   │   Returns: Future<void>
+│           │   │
+│           │   └─> setState(() { promptArgs = promptArgs.clear() })
+│           │
+│           ├─> catch (e):
+│           │   └─> setState(() { 
+│           │       errorMessage = 'Failed to send request: ${e.toString()}'
+│           │   })
+│           │
+│           └─> finally:
+│               └─> setState(() { isLoading = false })
+│           Returns: Future<void>
+│
+└─> BUILD METHOD:
+    │
+    └─> Widget build(BuildContext context)
+        └─> Returns: Scaffold(
+            appBar: AppBar(
+              title: Text('TEST.AI'),
+              actions: [
+                if (treeViewList.isNotEmpty):
+                  IconButton(icon: Icon(Icons.add_comment), 
+                             onPressed: startNewConversation)
+              ]
+            ),
+            body: Column(
+              children: [
+                if (isLoading): 
+                  Center(child: CircularProgressIndicator()),
+                  
+                if (errorMessage != null):
+                  Container with error message,
+                  
+                if (threadMap.isNotEmpty):
+                  Expanded(
+                    child: CustomScrollView(
+                      slivers: [
+                        TreeSliverThread(
+                          treeViewList: treeViewList,
+                          threadMap: threadMap,
+                          loadingExchanges: loadingExchanges,
+                          prepareSubPromptInput: prepareSubPromptInput,
+                          onNodeSelected: onNodeSelected
+                        )
+                      ]
+                    )
+                  )
+                else:
+                  Expanded(child: Center(child: Text('Start a conversation...'))),
+                  
+                SizedBox(height: bottomPadding),
+                
+                PromptInputField(
+                  key: promptInputFieldKey,
+                  onPrompt: onPrompt,
+                  isLoading: isLoading,
+                  errorMessage: errorMessage
+                )
+              ]
+            )
+          )
+          Returns: Widget
+
+
+================================================================================
+PART 3: TREESLIVERTHREAD COMPONENT (lib/ui/widgets/tree_sliver_thread.dart)
+================================================================================
+
+CLASS: TreeSliverThread extends StatefulWidget
+│
+├─> PROPERTIES:
+│   ├─> final List<Point> treeViewList
+│   ├─> final Map<String, Point> threadMap
+│   ├─> final Set<String> loadingExchanges
+│   ├─> final Function(PromptArgs) prepareSubPromptInput
+│   └─> final Function(String) onNodeSelected
+│
+└─> STATE: _TreeSliverThreadState createState()
+    Returns: _TreeSliverThreadState
+
+
+CLASS: _TreeSliverThreadState extends State<TreeSliverThread>
+│
+├─> STATE VARIABLES:
+│   ├─> late TreeSliverManager _treeSliverManager
+│   └─> List<TreeNodeModel> _flatTreeList = []
+│
+├─> LIFECYCLE METHODS:
+│   │
+│   ├─> void initState()
+│   │   ├─> super.initState()
+│   │   ├─> _treeSliverManager = TreeSliverManager()
+│   │   └─> _updateTreeList()
+│   │       Returns: void
+│   │
+│   └─> void didUpdateWidget(TreeSliverThread oldWidget)
+│       ├─> super.didUpdateWidget(oldWidget)
+│       └─> if (widget.treeViewList != oldWidget.treeViewList ||
+│               widget.threadMap != oldWidget.threadMap):
+│           └─> _updateTreeList()
+│           Returns: void
+│
+├─> TREE MANAGEMENT METHODS:
+│   │
+│   ├─> void _updateTreeList()
+│   │   ├─> Purpose: Rebuilds flat tree list from hierarchical structure
+│   │   └─> try:
+│   │       └─> setState(() {
+│   │           _flatTreeList = _treeSliverManager.buildFlatTreeList(
+│   │             widget.threadMap,
+│   │             widget.treeViewList
+│   │           )
+│   │         })
+│   │       Returns: List<TreeNodeModel>
+│   │       catch (e): debugPrint('Error updating tree list: $e')
+│   │       Returns: void
+│   │
+│   └─> void _handleNodeTap(TreeNodeModel node)
+│       ├─> Purpose: Handles tap on tree node
+│       └─> try:
+│           ├─> if (node.hasChildren):
+│           │   ├─> _treeSliverManager.toggleExpansion(node.id)
+│           │   └─> _updateTreeList()
+│           │
+│           └─> widget.onNodeSelected(node.pointId)
+│           catch (e): debugPrint('Error handling node tap: $e')
+│           Returns: void
+│
+└─> BUILD METHOD:
+    │
+    └─> Widget build(BuildContext context)
+        ├─> if (_flatTreeList.isEmpty):
+        │   └─> return SliverFillRemaining(
+        │       child: Center(child: Text('Start a conversation...'))
+        │     )
+        │
+        └─> return SliverList.builder(
+            itemCount: _flatTreeList.length,
+            itemBuilder: (context, index) {
+              try:
+                ├─> TreeNodeModel node = _flatTreeList[index]
+                ├─> bool isLoading = 
+                │     node.exchangeId != null && 
+                │     widget.loadingExchanges.contains(node.exchangeId)
+                │
+                └─> return TreeSliverItem(
+                    node: node,
+                    isLoading: isLoading,
+                    onTap: () => _handleNodeTap(node),
+                    prepareSubPromptInput: widget.prepareSubPromptInput
+                  )
+              catch (e):
+                debugPrint('Error building tree item at index $index: $e')
+                return SizedBox.shrink()
+            }
+          )
+          Returns: Widget
+
+
+================================================================================
+PART 4: TREESLIVERITEM COMPONENT (lib/ui/widgets/tree_sliver_item.dart)
+================================================================================
+
+CLASS: TreeSliverItem extends StatelessWidget
+│
+├─> CONSTANTS:
+│   ├─> static const double _basePadding = 8.0
+│   ├─> static const double _cardPadding = 12.0
+│   ├─> static const double _levelIndent = 24.0
+│   ├─> static const double _iconSize = 16.0
+│   ├─> static const double _expansionIconSize = 20.0
+│   ├─> static const double _fontSize = 14.0
+│   ├─> static const double _labelFontSize = 12.0
+│   ├─> static const double _spinnerSize = 16.0
+│   ├─> static const double _spinnerStrokeWidth = 2.0
+│   └─> static const double _borderRadius = 8.0
+│
+├─> PROPERTIES:
+│   ├─> final TreeNodeModel node
+│   ├─> final bool isLoading
+│   ├─> final VoidCallback onTap
+│   └─> final Function(PromptArgs) prepareSubPromptInput
+│
+└─> BUILD METHOD:
+    │
+    └─> Widget build(BuildContext context)
+        └─> Returns: Container(
+            margin: EdgeInsets.only(
+              left: node.level * _levelIndent,
+              top: 4.0,
+              right: _basePadding,
+              bottom: 4.0
+            ),
+            child: Card(
+              elevation: node.level == 0 ? 2 : 1,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(_borderRadius),
+                child: Padding(
+                  padding: EdgeInsets.all(_cardPadding),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (node.hasChildren): _buildExpansionHeader(),
+                      
+                      if (node.nodeType == NodeType.exchange || 
+                          node.nodeType == NodeType.shard):
+                        [
+                          if (node.promptContent != null):
+                            [
+                              _buildPromptSection(),
+                              SizedBox(height: _basePadding)
+                            ],
+                          if (isLoading):
+                            _buildStatusSection(StatusSectionConfig.loading())
+                          else if (node.responseContent != null):
+                            _buildResponseSection()
+                          else:
+                            _buildStatusSection(StatusSectionConfig.waiting())
+                        ]
+                      else if (node.nodeType == NodeType.shardResponse):
+                        [_buildResponseSection()]
+                    ]
+                  )
+                )
+              )
+            )
+          )
+          Returns: Widget
+
+
+PRIVATE METHODS:
+│
+├─> Widget _buildExpansionHeader()
+│   ├─> Purpose: Shows expand/collapse indicator
+│   └─> Returns: Container(
+│       margin: EdgeInsets.only(bottom: _basePadding),
+│       child: Row(
+│         children: [
+│           Icon(
+│             node.isExpanded ? Icons.expand_less : Icons.expand_more,
+│             size: _expansionIconSize,
+│             color: Colors.grey[600]
+│           ),
+│           SizedBox(width: 4),
+│           Text(
+│             node.isExpanded ? 'Collapse' : 'Expand',
+│             style: TextStyle(fontSize: _labelFontSize, color: Colors.grey[600])
+│           )
+│         ]
+│       )
+│     )
+│     Returns: Widget
+│
+├─> Widget _buildPromptSection()
+│   ├─> Purpose: Builds the user prompt display section
+│   ├─> Gets style: SectionStyle.forPrompt(node.nodeType)
+│   │   Returns: SectionStyle
+│   └─> Calls: _buildContentSection(
+│       config: ContentSectionConfig(
+│         backgroundColor: promptStyle.backgroundColor,
+│         borderColor: promptStyle.borderColor,
+│         icon: promptStyle.icon,
+│         iconColor: promptStyle.iconColor,
+│         label: promptStyle.label,
+│         content: node.promptContent!
+│       )
+│     )
+│     Returns: Widget
+│
+├─> Widget _buildResponseSection()
+│   ├─> Purpose: Builds the AI response display section
+│   ├─> Gets style: SectionStyle.forResponse(node.nodeType, node.shardId)
+│   │   Returns: SectionStyle
+│   └─> Calls: _buildContentSection(
+│       config: ContentSectionConfig(
+│         backgroundColor: responseStyle.backgroundColor,
+│         borderColor: responseStyle.borderColor,
+│         icon: responseStyle.icon,
+│         iconColor: responseStyle.iconColor,
+│         label: responseStyle.label,
+│         content: node.responseContent!
+│       )
+│     )
+│     Returns: Widget
+│
+├─> Widget _buildContentSection({required ContentSectionConfig config})
+│   ├─> Purpose: Generic content section builder (used by prompt/response)
+│   └─> Returns: Container(
+│       padding: EdgeInsets.all(_basePadding),
+│       decoration: BoxDecoration(
+│         color: config.backgroundColor,
+│         borderRadius: BorderRadius.circular(_borderRadius),
+│         border: Border.all(color: config.borderColor)
+│       ),
+│       child: Column(
+│         crossAxisAlignment: CrossAxisAlignment.start,
+│         children: [
+│           Row(
+│             children: [
+│               Icon(config.icon, size: _iconSize, color: config.iconColor),
+│               SizedBox(width: 4),
+│               Text(config.label, 
+│                    style: TextStyle(
+│                      fontWeight: FontWeight.bold,
+│                      color: config.iconColor,
+│                      fontSize: _labelFontSize
+│                    ))
+│             ]
+│           ),
+│           SizedBox(height: 4),
+│           _buildSelectableText(
+│             text: config.content,
+│             textStyle: TextStyle(fontSize: _fontSize, color: Colors.black87)
+│           )
+│         ]
+│       )
+│     )
+│     Returns: Widget
+│
+├─> Widget _buildStatusSection(StatusSectionConfig config)
+│   ├─> Purpose: Shows loading or waiting status
+│   └─> Returns: Container(
+│       padding: EdgeInsets.all(_cardPadding),
+│       decoration: BoxDecoration(
+│         color: config.backgroundColor,
+│         borderRadius: BorderRadius.circular(_borderRadius),
+│         border: Border.all(color: config.borderColor)
+│       ),
+│       child: Row(
+│         children: [
+│           if (config.showSpinner):
+│             SizedBox(
+│               width: _spinnerSize, height: _spinnerSize,
+│               child: CircularProgressIndicator(
+│                 strokeWidth: _spinnerStrokeWidth,
+│                 valueColor: AlwaysStoppedAnimation(config.iconColor)
+│               )
+│             )
+│           else:
+│             Icon(config.icon, size: config.iconSize, color: config.iconColor),
+│           SizedBox(width: _basePadding),
+│           Text(config.message, 
+│                style: TextStyle(
+│                  fontSize: _labelFontSize,
+│                  color: config.iconColor,
+│                  fontStyle: FontStyle.italic
+│                ))
+│         ]
+│       )
+│     )
+│     Returns: Widget
+│
+├─> Widget _buildSelectableText({required String text, required TextStyle textStyle})
+│   ├─> Purpose: Creates selectable text with custom context menu for sub-prompts
+│   └─> Returns: SelectableText(
+│       text,
+│       style: textStyle,
+│       contextMenuBuilder: (context, editableTextState) {
+│         ├─> Gets selection: editableTextState.currentTextEditingValue.selection
+│         ├─> Gets selectedText: selection.textInside(text)
+│         │
+│         ├─> if (selectedText.isEmpty):
+│         │   └─> return AdaptiveTextSelectionToolbar.buttonItems(
+│         │       anchors: editableTextState.contextMenuAnchors,
+│         │       buttonItems: editableTextState.contextMenuButtonItems
+│         │     )
+│         │
+│         └─> else (has selection):
+│             └─> return AdaptiveTextSelectionToolbar.buttonItems(
+│                 anchors: editableTextState.contextMenuAnchors,
+│                 buttonItems: [
+│                   ...editableTextState.contextMenuButtonItems,
+│                   ContextMenuButtonItem(
+│                     label: 'Sub-prompt',
+│                     onPressed: () => _handleSubPrompt(selectedText, selection)
+│                   )
+│                 ]
+│               )
+│       }
+│     )
+│     Returns: Widget
+│
+└─> void _handleSubPrompt(String selectedText, TextSelection selection)
+    ├─> Purpose: Handles sub-prompt creation from text selection
+    └─> try:
+        ├─> Clipboard.setData(ClipboardData(text: selectedText))
+        │
+        ├─> Creates PromptArgs:
+        │   └─> PromptArgs(
+        │       currentPointId: node.pointId,
+        │       parentPointId: node.pointId,
+        │       parentShardId: node.shardId,
+        │       isShardChild: true,
+        │       exchangeId: node.exchangeId,
+        │       choiceIndex: node.choiceIndex ?? 0,
+        │       selectedText: selectedText,
+        │       startPosition: selection.start,
+        │       endPosition: selection.end,
+        │       error: null
+        │     )
+        │
+        ├─> Calls: prepareSubPromptInput(promptArgs)
+        │   Returns: void (calls HomeScreenState.prepareSubPromptInput)
+        │
+        └─> ContextMenuController.removeAny()
+        catch (e): debugPrint('Error in sub-prompt: $e')
+        Returns: void
+
+
+================================================================================
+PART 5: TREESLIVERMANAGER (lib/managers/tree_sliver_manager.dart)
+================================================================================
+
+CLASS: TreeSliverManager
+│
+├─> STATE VARIABLES:
+│   └─> final Map<String, bool> _expansionState = {}
+│       Purpose: Tracks which nodes are expanded/collapsed
+│
+└─> METHODS:
+    │
+    ├─> List<TreeNodeModel> buildFlatTreeList(
+    │       Map<String, Point> threadMap,
+    │       List<Point> treeViewList
+    │   )
+    │   ├─> Purpose: Main entry point - converts hierarchical tree to flat list
+    │   ├─> Parameters:
+    │   │   ├─> threadMap: All points in conversation
+    │   │   └─> treeViewList: Points to display
+    │   │
+    │   └─> Flow:
+    │       ├─> if (threadMap.isEmpty || treeViewList.isEmpty):
+    │       │   └─> return []
+    │       │
+    │       ├─> List<TreeNodeModel> flatList = []
+    │       │
+    │       ├─> Calls: List<TreeNodeModel> treeNodes = _buildTreeStructure(treeViewList)
+    │       │   Returns: List<TreeNodeModel> (hierarchical tree)
+    │       │
+    │       ├─> Flattens tree:
+    │       │   └─> for (TreeNodeModel node in treeNodes):
+    │       │       └─> _flattenNode(node, flatList)
+    │       │           (recursively adds nodes to flat list based on expansion)
+    │       │
+    │       └─> return flatList
+    │       catch (e): return []
+    │       Returns: List<TreeNodeModel>
+    │
+    ├─> List<TreeNodeModel> _buildTreeStructure(List<Point> treeViewList)
+    │   ├─> Purpose: Builds hierarchical tree from Point list
+    │   │
+    │   └─> FIRST PASS: Create all nodes
+    │       └─> for (Point point in treeViewList):
+    │           ├─> Gets first exchange
+    │           ├─> Checks if point has valid shards
+    │           │
+    │           ├─> if (hasValidShards):
+    │           │   └─> Calls: _createShardPointNode()
+    │           │       Returns: TreeNodeModel (with response segments)
+    │           │
+    │           └─> else (regular point):
+    │               └─> Creates: TreeNodeModel (single exchange node)
+    │
+    │   └─> SECOND PASS: Build hierarchy
+    │       └─> Links parent-child relationships
+    │
+    │   └─> THIRD PASS: Update hasChildren flags
+    │       Returns: List<TreeNodeModel>
+    │
+    ├─> TreeNodeModel _createShardPointNode(...)
+    │   ├─> Purpose: Creates point node with split response segments
+    │   │
+    │   └─> Flow:
+    │       ├─> Creates main node (prompt only, no response)
+    │       │
+    │       ├─> Filters valid shards
+    │       │
+    │       ├─> Sorts shards by startPosition
+    │       │
+    │       ├─> For each shard:
+    │       │   ├─> Creates "before" segment (text before shard)
+    │       │   ├─> Creates shard segment (selected text)
+    │       │   │   └─> Adds shard children as TreeNodeModel children
+    │       │   └─> Updates currentPosition
+    │       │
+    │       ├─> Creates "after" segment (remaining text)
+    │       │
+    │       └─> return mainNode with all segments as children
+    │       Returns: TreeNodeModel
+    │
+    ├─> void _flattenNode(TreeNodeModel node, List<TreeNodeModel> flatList)
+    │   ├─> Purpose: Recursively flattens tree based on expansion state
+    │   └─> Adds node to flatList
+    │       └─> if (node.isExpanded): recursively adds children
+    │       Returns: void (modifies flatList)
+    │
+    ├─> void toggleExpansion(String nodeId)
+    │   └─> Toggles expansion state in _expansionState map
+    │       Returns: void
+    │
+    ├─> bool isExpanded(String nodeId)
+    │   └─> Returns expansion state (default: true)
+    │       Returns: bool
+    │
+    ├─> void expandAll()
+    │   └─> Clears _expansionState map (all default to expanded)
+    │       Returns: void
+    │
+    └─> void collapseAll(List<String> nodeIds)
+        └─> Sets all nodeIds to false in _expansionState
+            Returns: void
+
+
+================================================================================
+PART 6: DATA MODELS & CONFIGURATION
+================================================================================
+
+CLASS: TreeNodeModel (lib/models/tree_node_model.dart)
+│
+├─> PROPERTIES:
+│   ├─> final String id (unique tree node ID)
+│   ├─> final String pointId (Point reference)
+│   ├─> final String? parentId (parent node ID)
+│   ├─> final String? parentShardId (shard ID if shard child)
+│   ├─> final String? exchangeId (exchange reference)
+│   ├─> final int? choiceIndex (response choice index)
+│   ├─> final int level (tree depth, 0 = root)
+│   ├─> final bool isExpanded (expansion state)
+│   ├─> final bool hasChildren (has child nodes)
+│   ├─> final String? promptContent (user prompt text)
+│   ├─> final String? responseContent (AI response text)
+│   ├─> final String? promptRole ("user")
+│   ├─> final String? responseRole ("assistant")
+│   ├─> final NodeType nodeType (node type enum)
+│   ├─> final List<TreeNodeModel> children (child nodes)
+│   ├─> final String? shardId (shard reference)
+│   ├─> final int? shardStartPosition (shard start in response)
+│   └─> final int? shardEndPosition (shard end in response)
+│
+└─> METHODS:
+    └─> TreeNodeModel copyWith(...)
+        Returns: TreeNodeModel
+
+
+ENUM: NodeType
+├─> exchange (Regular conversation exchange)
+├─> response (Standalone response)
+├─> shard (Sub-prompt branched from parent)
+└─> shardResponse (Visual segment of split response)
+
+
+CLASS: ContentSectionConfig (lib/config/content_section_config.dart)
+├─> final Color backgroundColor
+├─> final Color borderColor
+├─> final IconData icon
+├─> final Color iconColor
+├─> final String label
+└─> final String content
+
+
+CLASS: SectionStyle (lib/config/section_style.dart)
+│
+└─> FACTORY METHODS:
+    ├─> factory SectionStyle.forPrompt(NodeType nodeType)
+    │   └─> Returns different styles for regular vs shard prompts
+    │       Returns: SectionStyle
+    │
+    └─> factory SectionStyle.forResponse(NodeType nodeType, String? shardId)
+        └─> Returns different styles for regular vs shard responses
+            Returns: SectionStyle
+
+
+CLASS: StatusSectionConfig (lib/config/status_section_config.dart)
+│
+└─> FACTORY METHODS:
+    ├─> factory StatusSectionConfig.loading()
+    │   └─> Returns loading configuration with spinner
+    │       Returns: StatusSectionConfig
+    │
+    └─> factory StatusSectionConfig.waiting()
+        └─> Returns waiting configuration
+            Returns: StatusSectionConfig
+
+
+================================================================================
+PART 7: COMPLETE UI FLOW WALKTHROUGHS
+================================================================================
+
+SCENARIO A: USER SUBMITS NEW PROMPT
+════════════════════════════════════════════════════════════════════════════
+
+1. User types in PromptInputField and presses Send
+   └─> PromptInputField._handleSendRequest()
+       └─> Calls: widget.onPrompt(text)
+
+2. HomeScreenState.onPrompt(promptText) triggered
+   ├─> isSubPrompt = false (regular prompt)
+   ├─> Creates currentPromptArgs
+   └─> Calls: homeScreenManager.handlePrompt(...)
+
+3. HomeScreenManager processes prompt (see main flow doc)
+   └─> Calls: updateTreeViewList(newTreeViewList) callback
+
+4. HomeScreenState.setState() updates treeViewList
+
+5. HomeScreenState.build() rebuilds
+   └─> Passes new treeViewList to TreeSliverThread
+
+6. TreeSliverThread.didUpdateWidget() detects change
+   └─> Calls: _updateTreeList()
+
+7. TreeSliverThread._updateTreeList()
+   └─> Calls: _treeSliverManager.buildFlatTreeList(threadMap, treeViewList)
+
+8. TreeSliverManager.buildFlatTreeList()
+   ├─> Calls: _buildTreeStructure(treeViewList)
+   │   ├─> First pass: Creates TreeNodeModel for each Point
+   │   │   └─> Regular points → single TreeNodeModel
+   │   │   └─> Shard points → calls _createShardPointNode()
+   │   ├─> Second pass: Links parent-child relationships
+   │   └─> Third pass: Updates hasChildren flags
+   │   Returns: List<TreeNodeModel> (hierarchical)
+   │
+   └─> Flattens tree:
+       └─> for each root node: _flattenNode(node, flatList)
+           └─> Adds node to flatList
+           └─> If expanded: recursively adds children
+       Returns: List<TreeNodeModel> (flat)
+
+9. TreeSliverThread.setState() updates _flatTreeList
+
+10. TreeSliverThread.build() rebuilds
+    └─> SliverList.builder creates TreeSliverItem for each node
+
+11. TreeSliverItem.build() renders each item
+    ├─> Container with left margin based on level
+    ├─> Card with InkWell
+    └─> Column with:
+        ├─> Expansion header (if hasChildren)
+        ├─> Prompt section (if promptContent exists)
+        └─> Response section or loading/waiting status
+
+
+SCENARIO B: USER CREATES SUB-PROMPT FROM TEXT SELECTION
+════════════════════════════════════════════════════════════════════════════
+
+1. User selects text in AI response
+   └─> TreeSliverItem._buildSelectableText()
+       └─> SelectableText.contextMenuBuilder shows menu
+
+2. User clicks "Sub-prompt" in context menu
+   └─> TreeSliverItem._handleSubPrompt(selectedText, selection)
+       ├─> Clipboard.setData(selectedText)
+       ├─> Creates PromptArgs:
+       │   ├─> currentPointId: node.pointId
+       │   ├─> parentPointId: node.pointId
+       │   ├─> parentShardId: node.shardId
+       │   ├─> isShardChild: true
+       │   ├─> exchangeId: node.exchangeId
+       │   ├─> selectedText: selectedText
+       │   ├─> startPosition: selection.start
+       │   └─> endPosition: selection.end
+       └─> Calls: prepareSubPromptInput(promptArgs)
+
+3. HomeScreenState.prepareSubPromptInput(promptArgs)
+   ├─> Validates selectedText not empty
+   ├─> setState(): Updates this.promptArgs (isShardChild = true)
+   ├─> Shows SnackBar: "Text copied to input..."
+   └─> WidgetsBinding.addPostFrameCallback:
+       ├─> promptInputFieldKey.currentState?.setText(selectedText)
+       └─> promptInputFieldKey.currentState?.focusInput()
+
+4. PromptInputField shows selected text
+   └─> User edits and sends
+
+5. HomeScreenState.onPrompt(promptText)
+   ├─> isSubPrompt = true (promptArgs.isShardChild)
+   ├─> Uses existing promptArgs (with shard info)
+   └─> Calls: homeScreenManager.handlePrompt(...)
+
+6. Manager processes sub-prompt (sharding flow)
+   └─> ThreadManager → ShardManager → creates Shard
+       └─> Updates parent Point with new Shard containing anchor
+
+7. TreeSliverManager._createShardPointNode() processes parent
+   ├─> Creates main node (prompt only)
+   ├─> Sorts shards by startPosition
+   └─> For each shard:
+       ├─> Creates "before" segment (0 to shard.start)
+       ├─> Creates shard segment (shard.start to shard.end)
+       │   └─> Adds sub-prompt Point as child TreeNodeModel
+       └─> Creates "after" segment (shard.end to length)
+
+8. Tree displays with segmented response
+   └─> Each segment is a separate TreeSliverItem
+       └─> Sub-prompt appears indented under shard segment
+
+
+SCENARIO C: USER TOGGLES NODE EXPANSION
+════════════════════════════════════════════════════════════════════════════
+
+1. User clicks on node with children
+   └─> TreeSliverItem.onTap callback triggered
+
+2. TreeSliverThread._handleNodeTap(node)
+   ├─> if (node.hasChildren):
+   │   ├─> _treeSliverManager.toggleExpansion(node.id)
+   │   │   └─> Updates _expansionState[node.id]
+   │   └─> _updateTreeList()
+   │
+   └─> widget.onNodeSelected(node.pointId)
+
+3. TreeSliverThread._updateTreeList()
+   └─> _treeSliverManager.buildFlatTreeList()
+       └─> _flattenNode() respects new expansion state
+           └─> Only adds children if node.isExpanded
+
+4. TreeSliverThread.setState() with new _flatTreeList
+
+5. Tree re-renders with collapsed/expanded children
+
+
+================================================================================
+PART 8: KEY ARCHITECTURAL PATTERNS
+================================================================================
+
+1. WIDGET COMPOSITION
+   └─> Layered architecture: Screen → Thread → Item
+
+2. STATE MANAGEMENT
+   ├─> Callback pattern for parent-child communication
+   ├─> setState() for reactive updates
+   └─> GlobalKey for accessing child state
+
+3. MANAGER SEPARATION
+   └─> TreeSliverManager handles business logic
+       UI widgets focus on presentation
+
+4. DATA TRANSFORMATION
+   ├─> Point (domain) → TreeNodeModel (view)
+   ├─> Hierarchical → Flat (for efficient rendering)
+   └─> Shard splitting (response → segments)
+
+5. CONFIGURATION OBJECTS
+   └─> Factory pattern for styles based on NodeType
+
+6. CONTEXT MENU CUSTOMIZATION
+   └─> SelectableText with custom contextMenuBuilder
+
+7. RESPONSIVE RENDERING
+   ├─> SliverList.builder for lazy loading
+   └─> Conditional rendering based on state
+
+8. VISUAL HIERARCHY
+   ├─> Indentation: node.level * 24px
+   ├─> Card elevation by level
+   └─> Color coding by NodeType
+
+
+================================================================================
+END OF UI LAYER FLOW DOCUMENTATION
+================================================================================

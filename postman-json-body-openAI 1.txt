@@ -1,0 +1,186 @@
+I have these parts of the Frontend Request that should come to java backend as JSON body:
+
+FeRequest:
+public record FeRequest(
+    PointDTO pointDTO,
+    OpenAIRequest openAIRequest) {
+}
+
+
+PointDTO:
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class PointDTO {
+    private String id;
+    private String parentPointId;
+    private ShardDTO shard;
+    private List<String> shardChildren;
+    private List<String> pointChildren;
+    private List<ExchangeDTO> exchangeList;
+    private MetadataDTO metadata;
+
+    /* TODO TP: activate later
+    private String threadTitle;
+    private String path;
+    private List<String> children;
+    private Map<String, List<String>> anchors;
+     */
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class ShardDTO {
+        private String parentShardId;
+        private String shardText;
+        private AnchorDTO anchor;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class AnchorDTO {
+        private Integer startPosition;
+        private Integer endPosition;
+        private String selectedText;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class ExchangeDTO {
+        private String exchangeId;
+        private PromptDTO prompt;
+        private ResponseDTO response;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class PromptDTO {
+        private String model;
+        private Map<String, PromptMessageDTO> promptMessagesMap;
+        private Integer maxTokens;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class PromptMessageDTO {
+        private String role;
+        private String content;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class ResponseDTO {
+        private String id;
+        private String object;
+        private Long created;
+        private String model;
+        private List<ChoiceDTO> choices;
+        private UsageDTO usage;
+        private String serviceTier;
+        private String systemFingerprint;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class ChoiceDTO {
+        private Integer index;
+        private MessageDTO message;
+        private Object logprobs;
+        private String finishReason;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class MessageDTO {
+        private String role;
+        private String content;
+        private String refusal;
+    }
+
+
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class UsageDTO {
+        private Integer promptTokens;
+        private Integer completionTokens;
+        private Integer totalTokens;
+        private PromptTokensDetailsDTO promptTokensDetails;
+        private CompletionTokensDetailsDTO completionTokensDetails;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class PromptTokensDetailsDTO {
+        private Integer cachedTokens;
+        private Integer audioTokens;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class CompletionTokensDetailsDTO {
+        private Integer reasoningTokens;
+        private Integer audioTokens;
+        private Integer acceptedPredictionTokens;
+        private Integer rejectedPredictionTokens;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class MetadataDTO {
+        private Boolean openState;
+
+        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+        private Instant created;
+
+        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+        private Instant modified;
+
+        private Integer modifiedCount;
+
+        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+        private Instant lastAccessed;
+
+        private Integer hotness;
+    }
+}
+
+OpenAIRequest:
+public record OpenAIRequest(
+        String model,
+        List<Message> messages,
+        @JsonProperty("max_tokens") int maxTokens
+) {
+    public record Message(
+            String role,
+            String content
+    ) {}
+}
+
+
+Can you create a JASON body that I can paste into the Postman POST request body and call the backend endpoint. Fill the properties with example values. Take extra care for the PromptDTO and it's dependent variables since this will be sent to OpenAI's gpt-3.5-turbo model. For the "user" prompt "message" put: "What's the closest star to Earth?"
